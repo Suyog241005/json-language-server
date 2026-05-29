@@ -13,29 +13,62 @@ import type {
   ServerRequestHandler
 } from "vscode-languageserver";
 
-export interface Server extends Connection {}
-
-export class Server {
+export class Server implements Connection {
   private connection: Connection;
-
   private initializeHandlers: Set<ServerRequestHandler<InitializeParams, InitializeResult, never, InitializeError>>;
-
   private initializedHandlers: Set<NotificationHandler<InitializedParams>>;
-
   private shutdownHandlers: Set<RequestHandler0<void, void>>;
-
   private exitHandlers: Set<NotificationHandler0>;
+
+  declare listen: Connection["listen"];
+  declare onRequest: Connection["onRequest"];
+  declare sendRequest: Connection["sendRequest"];
+  declare onNotification: Connection["onNotification"];
+  declare sendNotification: Connection["sendNotification"];
+  declare onProgress: Connection["onProgress"];
+  declare sendProgress: Connection["sendProgress"];
+  declare onDidChangeConfiguration: Connection["onDidChangeConfiguration"];
+  declare onDidChangeWatchedFiles: Connection["onDidChangeWatchedFiles"];
+  declare onDidOpenTextDocument: Connection["onDidOpenTextDocument"];
+  declare onDidChangeTextDocument: Connection["onDidChangeTextDocument"];
+  declare onDidCloseTextDocument: Connection["onDidCloseTextDocument"];
+  declare onWillSaveTextDocument: Connection["onWillSaveTextDocument"];
+  declare onWillSaveTextDocumentWaitUntil: Connection["onWillSaveTextDocumentWaitUntil"];
+  declare onDidSaveTextDocument: Connection["onDidSaveTextDocument"];
+  declare sendDiagnostics: Connection["sendDiagnostics"];
+  declare onHover: Connection["onHover"];
+  declare onCompletion: Connection["onCompletion"];
+  declare onCompletionResolve: Connection["onCompletionResolve"];
+  declare onSignatureHelp: Connection["onSignatureHelp"];
+  declare onDeclaration: Connection["onDeclaration"];
+  declare onDefinition: Connection["onDefinition"];
+  declare onTypeDefinition: Connection["onTypeDefinition"];
+  declare onImplementation: Connection["onImplementation"];
+  declare onReferences: Connection["onReferences"];
+  declare onDocumentHighlight: Connection["onDocumentHighlight"];
+  declare onDocumentSymbol: Connection["onDocumentSymbol"];
+  declare onWorkspaceSymbol: Connection["onWorkspaceSymbol"];
+  declare onWorkspaceSymbolResolve: Connection["onWorkspaceSymbolResolve"];
+  declare onCodeAction: Connection["onCodeAction"];
+  declare onCodeActionResolve: Connection["onCodeActionResolve"];
+  declare onCodeLens: Connection["onCodeLens"];
+  declare onCodeLensResolve: Connection["onCodeLensResolve"];
+  declare onDocumentFormatting: Connection["onDocumentFormatting"];
+  declare onDocumentRangeFormatting: Connection["onDocumentRangeFormatting"];
+  declare onDocumentOnTypeFormatting: Connection["onDocumentOnTypeFormatting"];
+  declare onRenameRequest: Connection["onRenameRequest"];
+  declare onPrepareRename: Connection["onPrepareRename"];
+  declare onDocumentLinks: Connection["onDocumentLinks"];
+  declare onDocumentLinkResolve: Connection["onDocumentLinkResolve"];
+  declare onDocumentColor: Connection["onDocumentColor"];
+  declare onColorPresentation: Connection["onColorPresentation"];
+  declare onFoldingRanges: Connection["onFoldingRanges"];
+  declare onSelectionRanges: Connection["onSelectionRanges"];
+  declare onExecuteCommand: Connection["onExecuteCommand"];
+  declare dispose: Connection["dispose"];
 
   constructor(connection: Connection) {
     this.connection = connection;
-
-    this.listen = this.connection.listen;
-    this.onRequest = this.connection.onRequest;
-    this.sendRequest = this.connection.sendRequest;
-    this.onNotification = this.connection.onNotification;
-    this.sendNotification = this.connection.sendNotification;
-    this.onProgress = this.connection.onProgress;
-    this.sendProgress = this.connection.sendProgress;
 
     this.initializeHandlers = new Set();
     this.connection.onInitialize((params, token, workDoneProgress) => {
@@ -73,45 +106,52 @@ export class Server {
       }
     });
 
-    this.onDidChangeConfiguration = this.connection.onDidChangeConfiguration;
-    this.onDidChangeWatchedFiles = this.connection.onDidChangeWatchedFiles;
-    this.onDidOpenTextDocument = this.connection.onDidOpenTextDocument;
-    this.onDidChangeTextDocument = this.connection.onDidChangeTextDocument;
-    this.onDidCloseTextDocument = this.connection.onDidCloseTextDocument;
-    this.onWillSaveTextDocument = this.connection.onWillSaveTextDocument;
-    this.onWillSaveTextDocumentWaitUntil = this.connection.onWillSaveTextDocumentWaitUntil;
-    this.onDidSaveTextDocument = this.connection.onDidSaveTextDocument;
-    this.sendDiagnostics = this.connection.sendDiagnostics;
-    this.onHover = this.connection.onHover;
-    this.onCompletion = this.connection.onCompletion;
-    this.onCompletionResolve = this.connection.onCompletionResolve;
-    this.onSignatureHelp = this.connection.onSignatureHelp;
-    this.onDeclaration = this.connection.onDeclaration;
-    this.onDefinition = this.connection.onDefinition;
-    this.onTypeDefinition = this.connection.onTypeDefinition;
-    this.onImplementation = this.connection.onImplementation;
-    this.onReferences = this.connection.onReferences;
-    this.onDocumentHighlight = this.connection.onDocumentHighlight;
-    this.onDocumentSymbol = this.connection.onDocumentSymbol;
-    this.onWorkspaceSymbol = this.connection.onWorkspaceSymbol;
-    this.onWorkspaceSymbolResolve = this.connection.onWorkspaceSymbolResolve;
-    this.onCodeAction = this.connection.onCodeAction;
-    this.onCodeActionResolve = this.connection.onCodeActionResolve;
-    this.onCodeLens = this.connection.onCodeLens;
-    this.onCodeLensResolve = this.connection.onCodeLensResolve;
-    this.onDocumentFormatting = this.connection.onDocumentFormatting;
-    this.onDocumentRangeFormatting = this.connection.onDocumentRangeFormatting;
-    this.onDocumentOnTypeFormatting = this.connection.onDocumentOnTypeFormatting;
-    this.onRenameRequest = this.connection.onRenameRequest;
-    this.onPrepareRename = this.connection.onPrepareRename;
-    this.onDocumentLinks = this.connection.onDocumentLinks;
-    this.onDocumentLinkResolve = this.connection.onDocumentLinkResolve;
-    this.onDocumentColor = this.connection.onDocumentColor;
-    this.onColorPresentation = this.connection.onColorPresentation;
-    this.onFoldingRanges = this.connection.onFoldingRanges;
-    this.onSelectionRanges = this.connection.onSelectionRanges;
-    this.onExecuteCommand = this.connection.onExecuteCommand;
-    this.dispose = this.connection.dispose;
+    this.listen = this.connection.listen.bind(this.connection);
+    this.onRequest = this.connection.onRequest.bind(this.connection);
+    this.sendRequest = this.connection.sendRequest.bind(this.connection);
+    this.onNotification = this.connection.onNotification.bind(this.connection);
+    this.sendNotification = this.connection.sendNotification.bind(this.connection);
+    this.onProgress = this.connection.onProgress.bind(this.connection);
+    this.sendProgress = this.connection.sendProgress.bind(this.connection);
+    this.onDidChangeConfiguration = this.connection.onDidChangeConfiguration.bind(this.connection);
+    this.onDidChangeWatchedFiles = this.connection.onDidChangeWatchedFiles.bind(this.connection);
+    this.onDidOpenTextDocument = this.connection.onDidOpenTextDocument.bind(this.connection);
+    this.onDidChangeTextDocument = this.connection.onDidChangeTextDocument.bind(this.connection);
+    this.onDidCloseTextDocument = this.connection.onDidCloseTextDocument.bind(this.connection);
+    this.onWillSaveTextDocument = this.connection.onWillSaveTextDocument.bind(this.connection);
+    this.onWillSaveTextDocumentWaitUntil = this.connection.onWillSaveTextDocumentWaitUntil.bind(this.connection);
+    this.onDidSaveTextDocument = this.connection.onDidSaveTextDocument.bind(this.connection);
+    this.sendDiagnostics = this.connection.sendDiagnostics.bind(this.connection);
+    this.onHover = this.connection.onHover.bind(this.connection);
+    this.onCompletion = this.connection.onCompletion.bind(this.connection);
+    this.onCompletionResolve = this.connection.onCompletionResolve.bind(this.connection);
+    this.onSignatureHelp = this.connection.onSignatureHelp.bind(this.connection);
+    this.onDeclaration = this.connection.onDeclaration.bind(this.connection);
+    this.onDefinition = this.connection.onDefinition.bind(this.connection);
+    this.onTypeDefinition = this.connection.onTypeDefinition.bind(this.connection);
+    this.onImplementation = this.connection.onImplementation.bind(this.connection);
+    this.onReferences = this.connection.onReferences.bind(this.connection);
+    this.onDocumentHighlight = this.connection.onDocumentHighlight.bind(this.connection);
+    this.onDocumentSymbol = this.connection.onDocumentSymbol.bind(this.connection);
+    this.onWorkspaceSymbol = this.connection.onWorkspaceSymbol.bind(this.connection);
+    this.onWorkspaceSymbolResolve = this.connection.onWorkspaceSymbolResolve.bind(this.connection);
+    this.onCodeAction = this.connection.onCodeAction.bind(this.connection);
+    this.onCodeActionResolve = this.connection.onCodeActionResolve.bind(this.connection);
+    this.onCodeLens = this.connection.onCodeLens.bind(this.connection);
+    this.onCodeLensResolve = this.connection.onCodeLensResolve.bind(this.connection);
+    this.onDocumentFormatting = this.connection.onDocumentFormatting.bind(this.connection);
+    this.onDocumentRangeFormatting = this.connection.onDocumentRangeFormatting.bind(this.connection);
+    this.onDocumentOnTypeFormatting = this.connection.onDocumentOnTypeFormatting.bind(this.connection);
+    this.onRenameRequest = this.connection.onRenameRequest.bind(this.connection);
+    this.onPrepareRename = this.connection.onPrepareRename.bind(this.connection);
+    this.onDocumentLinks = this.connection.onDocumentLinks.bind(this.connection);
+    this.onDocumentLinkResolve = this.connection.onDocumentLinkResolve.bind(this.connection);
+    this.onDocumentColor = this.connection.onDocumentColor.bind(this.connection);
+    this.onColorPresentation = this.connection.onColorPresentation.bind(this.connection);
+    this.onFoldingRanges = this.connection.onFoldingRanges.bind(this.connection);
+    this.onSelectionRanges = this.connection.onSelectionRanges.bind(this.connection);
+    this.onExecuteCommand = this.connection.onExecuteCommand.bind(this.connection);
+    this.dispose = this.connection.dispose.bind(this.connection);
   }
 
   onInitialize(handler: ServerRequestHandler<InitializeParams, InitializeResult, never, InitializeError>): Disposable {
