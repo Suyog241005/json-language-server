@@ -21,7 +21,7 @@ export class JsonValidation {
       };
     });
 
-    // single onDidChangeContent call to prevent overwriting by multiple features
+    // Single onDidChangeContent handler to ensure one combined sendDiagnostics call per change, preventing multiple diagnostic pushes per keystroke from separate features
     documents.onDidChangeContent(async (change) => {
       const textDocument = change.document;
       const text = textDocument.getText();
