@@ -18,7 +18,7 @@ export class SyntaxValidation implements DiagnosticsProvider {
         end: textDocument.positionAt(error.offset + error.length)
       },
       message: jsonc.printParseErrorCode(error.error),
-      source: "json-language-server"
+      source: "hyperjump-json-language-server"
     }));
   }
 }

@@ -86,9 +86,9 @@ export class Server implements Connection {
     });
 
     this.initializedHandlers = new Set();
-    this.connection.onInitialized((params) => {
+    this.connection.onInitialized(async (params) => {
       for (const handler of this.initializedHandlers) {
-        handler(params);
+        await handler(params);
       }
     });
 
@@ -100,9 +100,9 @@ export class Server implements Connection {
     });
 
     this.exitHandlers = new Set();
-    this.connection.onExit(() => {
+    this.connection.onExit(async () => {
       for (const handler of this.exitHandlers) {
-        handler();
+        await handler();
       }
     });
 

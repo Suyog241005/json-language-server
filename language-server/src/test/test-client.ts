@@ -14,7 +14,7 @@ import {
   RegistrationRequest,
   ShutdownRequest
 } from "vscode-languageserver";
-import { createConnection } from "vscode-languageserver/node.js";
+import { createConnection } from "vscode-languageserver/node";
 import { URI, Utils } from "vscode-uri";
 import { merge } from "merge-anything";
 import { buildServer, LanguageServerSettings } from "../build-server.js";
@@ -175,7 +175,7 @@ export class TestClient {
       ]
     };
 
-    const initializeResult = await this.client.sendRequest(InitializeRequest.type, merge(defaultInitParams, params));
+    const initializeResult = await this.client.sendRequest(InitializeRequest.type, merge(defaultInitParams, params) as InitializeParams);
     this._serverCapabilities = initializeResult.capabilities;
 
     await this.client.sendNotification(InitializedNotification.type, {});

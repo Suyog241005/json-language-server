@@ -1,5 +1,5 @@
 {
-  "name": "hyperjump-json",
+  "name": "hyperjump-json-language-server",
   "version": "0.1.0",
   "description": "A language server for JSON supporting all major versions of JSON Schema",
   "main": "./out/extension.js",

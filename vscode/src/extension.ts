@@ -25,7 +25,7 @@ export const activate = async (context: ExtensionContext) => {
     documentSelector: [{ scheme: "file", language: "json" }]
   };
 
-  client = new LanguageClient("jsonLanguageServer", "Hyperjump - JSON Language Server", serverOptions, clientOptions);
+  client = new LanguageClient("hyperjumpJsonLanguageServer", "Hyperjump - JSON Language Server", serverOptions, clientOptions);
   await client.start();
 };
 
