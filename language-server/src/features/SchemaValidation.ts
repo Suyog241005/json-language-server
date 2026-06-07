@@ -57,11 +57,11 @@ const findNodeByPointer = (node: jsonc.Node, pointer: string) => {
 };
 
 const formatError = (error: ErrorObject, depth = 0): string => {
-  let msg = error.message;
+  let message = error.message;
   if (error.alternatives && error.alternatives.length > 0) {
     const indent = "  ".repeat(depth + 1);
     const lines = error.alternatives.flatMap((alt) => alt.map((subErr) => `${indent}- ${formatError(subErr, depth + 1)}`));
-    msg += `:\n${lines.join("\n")}`;
+    message += `:\n${lines.join("\n")}`;
   }
-  return msg;
+  return message;
 };
