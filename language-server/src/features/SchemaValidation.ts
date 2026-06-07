@@ -51,9 +51,14 @@ const findNodeByPointer = (node: jsonc.Node, pointer: string) => {
   if (pointer === "#") {
     return node;
   }
-  const segments = [...pointerSegments(pointer.slice(1))];
-  const path = segments.map((s) => /^\d+$/.test(s) ? parseInt(s) : s);
-  return jsonc.findNodeAtLocation(node, path);
+
+  pointer = decodeURIComponent(pointer.slice(1));
+  for (let segment of pointerSegments(pointer)) {
+    const key = /^\d+$/.test(segment) && node.type === "array" ? parseInt(segment) : segment;
+    node = jsonc.findNodeAtLocation(node, [key]) ?? node;
+  }
+
+  return node;
 };
 
 const formatError = (error: ErrorObject, depth = 0): string => {

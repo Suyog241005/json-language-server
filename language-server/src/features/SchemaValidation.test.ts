@@ -185,4 +185,91 @@ describe("Schema Validation", () => {
     const cleanMessage = diagnostics[0].message.replace(/[\u2068\u2069]/g, "");
     expect(cleanMessage).toBe("Expected a string");
   });
+
+  test("property key that looks like a number should not be treated like one - object case", async () => {
+    const diagnosticsPromise = new Promise((resolve) => {
+      client.onNotification("textDocument/publishDiagnostics", (params) => {
+        resolve(params.diagnostics);
+      });
+    });
+
+    const testSchema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        0: { type: "string" }
+      }
+    };
+
+    registerSchema(testSchema, fixtureSchemaUri);
+
+    await client.writeDocument("instance.json", `{
+    "$schema": "${fixtureSchemaUri}",
+    "0": 123
+  }`);
+    await client.openDocument("instance.json");
+
+    const diagnostics = (await diagnosticsPromise) as any[];
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].message.replace(/[\u2068\u2069]/g, "")).toBe("Expected a string");
+  });
+
+  test("URI encoded characters in pointer are decoded correctly", async () => {
+    const diagnosticsPromise = new Promise((resolve) => {
+      client.onNotification("textDocument/publishDiagnostics", (params) => {
+        resolve(params.diagnostics);
+      });
+    });
+
+    const testSchema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        "foo bar": { type: "string" }
+      }
+    };
+
+    registerSchema(testSchema, fixtureSchemaUri);
+
+    await client.writeDocument("instance.json", `{
+    "$schema": "${fixtureSchemaUri}",
+    "foo bar": 123
+    }`);
+    await client.openDocument("instance.json");
+
+    const diagnostics = (await diagnosticsPromise) as any[];
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].message.replace(/[\u2068\u2069]/g, "")).toBe("Expected a string");
+  });
+
+  test("numeric segment in array should be treated as array index", async () => {
+    const diagnosticsPromise = new Promise((resolve) => {
+      client.onNotification("textDocument/publishDiagnostics", (params) => {
+        resolve(params.diagnostics);
+      });
+    });
+
+    const testSchema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        42: {
+          type: "array",
+          items: { type: "number" }
+        }
+      }
+    };
+
+    registerSchema(testSchema, fixtureSchemaUri);
+
+    await client.writeDocument("instance.json", `{
+    "$schema": "${fixtureSchemaUri}",
+    "42": ["foo"]
+  }`);
+    await client.openDocument("instance.json");
+
+    const diagnostics = (await diagnosticsPromise) as any[];
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].message.replace(/[\u2068\u2069]/g, "")).toBe("Expected a number");
+  });
 });
