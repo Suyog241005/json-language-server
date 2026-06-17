@@ -37,6 +37,7 @@ export default defineConfig({
     "@stylistic/object-curly-newline": ["error", { consistent: true }],
     "@stylistic/semi-style": ["error"],
     "@stylistic/switch-colon-spacing": ["error"],
-    "curly": ["error", "all"]
+    "curly": ["error", "all"],
+    "no-unused-vars": ["error", { caughtErrorsIgnorePattern: "^_" }]
   }
 });

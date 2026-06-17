@@ -37,7 +37,7 @@ export class SchemaValidation implements DiagnosticsProvider {
             }
           });
         }
-      } catch (error: unknown) {
+      } catch (_error: unknown) {
         // TODO: Handle invalid or missing schema errors
       }
     }
