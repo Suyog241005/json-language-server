@@ -1,5 +1,4 @@
 import { Diagnostic, DiagnosticSeverity } from "vscode-languageserver";
-import { validate } from "@hyperjump/json-schema-errors";
 import { JsonDocument } from "../models/JsonDocument.ts";
 
 import type { ErrorObject } from "@hyperjump/json-schema-errors";
@@ -9,39 +8,31 @@ export class SchemaValidation implements DiagnosticsProvider {
   async getDiagnostics(jsonDocument: JsonDocument) {
     const schemaDiagnostics: Diagnostic[] = [];
 
-    const schemaNode = jsonDocument.findNodeAtPointer("/$schema");
-    const schemaUri = schemaNode?.value;
+    try {
+      const result = await jsonDocument.getSchemaErrors();
 
-    // skip schema validation if there are syntax errors hence the parseError.length check
-    if (schemaUri && jsonDocument.getParseErrors().length === 0) {
-      let instance = JSON.parse(jsonDocument.getText());
-      try {
-        const result = await validate(schemaUri, instance);
+      if (result?.valid === false) {
+        const errors = result.errors;
+        errors.forEach((error) => {
+          const pointer = decodeURIComponent(error.instanceLocation.slice(1));
+          const node = jsonDocument.findNodeAtPointer(pointer);
 
-        if (!result.valid) {
-          const errors = result.errors;
-          errors.forEach((error) => {
-            const pointer = decodeURIComponent(error.instanceLocation.slice(1));
-            const node = jsonDocument.findNodeAtPointer(pointer);
-
-            if (node) {
-              schemaDiagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                range: {
-                  start: jsonDocument.positionAt(node.offset),
-                  end: jsonDocument.positionAt(node.offset + node.length)
-                },
-                message: formatError(error),
-                source: "hyperjump-json-language-server"
-              });
-            }
-          });
-        }
-      } catch (_error: unknown) {
-        // TODO: Handle invalid or missing schema errors
+          if (node) {
+            schemaDiagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: {
+                start: jsonDocument.positionAt(node.offset),
+                end: jsonDocument.positionAt(node.offset + node.length)
+              },
+              message: formatError(error),
+              source: "hyperjump-json-language-server"
+            });
+          }
+        });
       }
+    } catch (_error: unknown) {
+      // TODO: Handle invalid or missing schema errors
     }
-
     return schemaDiagnostics;
   }
 }

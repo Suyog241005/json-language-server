@@ -1,6 +1,7 @@
 import { Server } from "../services/server.ts";
 import { JsonDocuments } from "../services/JsonDocuments.ts";
 import { JsonDocument } from "../models/JsonDocument.ts";
+import { normalizeIri } from "@hyperjump/uri";
 
 import type { Diagnostic } from "vscode-languageserver";
 
@@ -9,21 +10,45 @@ export type DiagnosticsProvider = {
 };
 
 export class Diagnostics {
+  private server: Server;
+  private jsonDocuments: JsonDocuments;
   private providers: DiagnosticsProvider[];
 
-  constructor(server: Server, documents: JsonDocuments, providers: DiagnosticsProvider[]) {
+  constructor(server: Server, jsonDocuments: JsonDocuments, providers: DiagnosticsProvider[]) {
+    this.server = server;
+    this.jsonDocuments = jsonDocuments;
     this.providers = providers;
 
-    documents.onDidChangeContent(async (change) => {
-      const diagnostics = [];
-      for (const provider of this.providers) {
-        diagnostics.push(...await provider.getDiagnostics(change.document));
-      }
-
-      await server.sendDiagnostics({
-        uri: change.document.uri,
-        diagnostics: diagnostics
-      });
+    jsonDocuments.onDidChangeContent(async (change) => {
+      await this.sendDiagnostics(change.document);
     });
+
+    server.onDidChangeWatchedFiles(async (params) => {
+      for (const change of params.changes) {
+        const changedUri = normalizeIri(change.uri);
+        await this.revalidateDependentDocuments(changedUri);
+      }
+    });
+  }
+
+  private async sendDiagnostics(document: JsonDocument) {
+    const diagnostics = [];
+    for (const provider of this.providers) {
+      diagnostics.push(...await provider.getDiagnostics(document));
+    }
+
+    await this.server.sendDiagnostics({
+      uri: document.uri,
+      diagnostics: diagnostics
+    });
+  }
+
+  private async revalidateDependentDocuments(schemaUri: string) {
+    for (const jsonDocument of this.jsonDocuments.all()) {
+      if (jsonDocument.dependsOn(schemaUri)) {
+        jsonDocument.validateSchema();
+        await this.sendDiagnostics(jsonDocument);
+      }
+    }
   }
 }

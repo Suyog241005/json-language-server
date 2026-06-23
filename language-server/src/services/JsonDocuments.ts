@@ -4,16 +4,17 @@ import { JsonDocument } from "../models/JsonDocument.ts";
 import { Server } from "./server.ts";
 
 import type { DocumentUri, ServerCapabilities, TextDocumentContentChangeEvent } from "vscode-languageserver";
+import type { SchemaStore } from "./SchemaStore.ts";
 
 export class JsonDocuments extends TextDocuments<JsonDocument> {
   private server: Server;
   private hasWorkspaceWatchCapability: boolean = false;
 
-  constructor(server: Server) {
+  constructor(server: Server, schemaStore: SchemaStore) {
     super({
       create(uri: DocumentUri, languageId: string, version: number, content: string) {
         const textDocument = TextDocument.create(uri, languageId, version, content);
-        return new JsonDocument(textDocument);
+        return new JsonDocument(textDocument, schemaStore);
       },
       update(document: JsonDocument, changes: TextDocumentContentChangeEvent[], version: number) {
         document.update(changes, version);

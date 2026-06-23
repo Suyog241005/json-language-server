@@ -256,7 +256,7 @@ export class TestClient {
 
     this.openDocuments.add(documentUri.toString());
 
-    return documentUri;
+    return documentUri.toString();
   }
 
   async changeDocument(uri: string, text: string) {
@@ -269,6 +269,8 @@ export class TestClient {
       },
       contentChanges: [{ text }]
     });
+
+    return documentUri.toString();
   }
 
   async closeDocument(uri: string) {

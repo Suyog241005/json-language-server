@@ -2,18 +2,67 @@ import { TextDocumentContentChangeEvent } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import * as jsonc from "jsonc-parser";
 import { pointerSegments } from "@hyperjump/json-pointer";
+import { resolveIri } from "@hyperjump/uri";
+import { SchemaStore } from "../services/SchemaStore.ts";
 
 import type { Position, Range } from "vscode-languageserver-textdocument";
+import type { ValidationResult } from "@hyperjump/json-schema-errors";
 
 export class JsonDocument implements TextDocument {
   private textDocument: TextDocument;
+  private schemaStore: SchemaStore;
   private ast: jsonc.Node | undefined;
   private parseErrors: jsonc.ParseError[] = [];
+  private schemaErrors: Promise<ValidationResult> | undefined;
+  private schemaUri: string | undefined;
 
-  constructor(textDocument: TextDocument) {
+  constructor(textDocument: TextDocument, schemaStore: SchemaStore) {
     this.textDocument = textDocument;
+    this.schemaStore = schemaStore;
+
+    this.validate();
+  }
+
+  private validate() {
+    this.parseErrors = [];
+    this.schemaErrors = undefined;
+    this.schemaUri = undefined;
 
     this.ast = jsonc.parseTree(this.textDocument.getText(), this.parseErrors);
+
+    if (this.parseErrors.length > 0) {
+      return;
+    }
+
+    const schemaNode = this.findNodeAtPointer("/$schema");
+    if (schemaNode) {
+      try {
+        this.schemaUri = resolveIri(schemaNode.value, this.uri);
+      } catch {
+        this.schemaUri = schemaNode.value;
+      }
+
+      this.validateSchema();
+    }
+  }
+
+  validateSchema() {
+    if (this.schemaUri === undefined) {
+      return;
+    }
+
+    const instance = JSON.parse(this.getText());
+    this.schemaErrors = this.schemaStore.validate(this.schemaUri, instance);
+  }
+
+  dependsOn(changedUri: string) {
+    if (this.schemaUri === undefined) {
+      return false;
+    }
+
+    const dependentSchemaUris = this.schemaStore.getDependentSchemaUris(this.schemaUri);
+
+    return dependentSchemaUris === undefined || dependentSchemaUris.has(changedUri);
   }
 
   get uri() {
@@ -32,26 +81,29 @@ export class JsonDocument implements TextDocument {
     return this.textDocument.lineCount;
   }
 
-  getText(range?: Range): string {
+  getText(range?: Range) {
     return this.textDocument.getText(range);
   }
 
-  positionAt(offset: number): Position {
+  positionAt(offset: number) {
     return this.textDocument.positionAt(offset);
   }
 
-  offsetAt(position: Position): number {
+  offsetAt(position: Position) {
     return this.textDocument.offsetAt(position);
   }
 
-  update(changes: TextDocumentContentChangeEvent[], version: number): void {
+  update(changes: TextDocumentContentChangeEvent[], version: number) {
     TextDocument.update(this.textDocument, changes, version);
-    this.parseErrors = [];
-    this.ast = jsonc.parseTree(this.textDocument.getText(), this.parseErrors);
+    this.validate();
   }
 
   getParseErrors() {
     return this.parseErrors;
+  }
+
+  getSchemaErrors() {
+    return this.schemaErrors;
   }
 
   findNodeAtPointer(pointer: string) {
