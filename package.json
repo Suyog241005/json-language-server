@@ -25,10 +25,10 @@
   "type": "module",
   "devDependencies": {
     "@stylistic/eslint-plugin": "*",
-    "@types/node": "^25.9.1",
+    "@types/node": "",
     "oxlint": "*",
     "oxlint-tsgolint": "*",
-    "typescript": "^6.0.3",
+    "typescript": "*",
     "vitest": "*"
   }
 }
