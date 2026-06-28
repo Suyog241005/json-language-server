@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { TestClient } from "../test/TestClient.ts";
-import { TextDocument } from "vscode-languageserver-textdocument";
+
 import type { TextEdit } from "vscode-languageserver";
 
 describe("Formatting", () => {
@@ -29,9 +29,29 @@ describe("Formatting", () => {
     })) as TextEdit[];
 
     expect(result).toBeDefined();
-    expect(result.length).toBeGreaterThan(0);
-    const formatted = applyEdits(originalText, result);
-    expect(formatted).toBe(`{\n  "foo": "bar"\n}`);
+    expect(result).toEqual([
+      {
+        range: {
+          start: { line: 0, character: 1 },
+          end: { line: 0, character: 1 }
+        },
+        newText: "\n  "
+      },
+      {
+        range: {
+          start: { line: 0, character: 7 },
+          end: { line: 0, character: 7 }
+        },
+        newText: " "
+      },
+      {
+        range: {
+          start: { line: 0, character: 12 },
+          end: { line: 0, character: 12 }
+        },
+        newText: "\n"
+      }
+    ]);
   });
 
   test("should format JSON with tabs", async () => {
@@ -48,9 +68,29 @@ describe("Formatting", () => {
     })) as TextEdit[];
 
     expect(result).toBeDefined();
-    expect(result.length).toBeGreaterThan(0);
-    const formatted = applyEdits(originalText, result);
-    expect(formatted).toBe(`{\n\t"foo": "bar"\n}`);
+    expect(result).toEqual([
+      {
+        range: {
+          start: { line: 0, character: 1 },
+          end: { line: 0, character: 1 }
+        },
+        newText: "\n\t"
+      },
+      {
+        range: {
+          start: { line: 0, character: 7 },
+          end: { line: 0, character: 7 }
+        },
+        newText: " "
+      },
+      {
+        range: {
+          start: { line: 0, character: 12 },
+          end: { line: 0, character: 12 }
+        },
+        newText: "\n"
+      }
+    ]);
   });
 
   test("should preserve CRLF line endings when formatting a document with CRLF", async () => {
@@ -67,8 +107,36 @@ describe("Formatting", () => {
     })) as TextEdit[];
 
     expect(result).toBeDefined();
-    const formatted = applyEdits(originalText, result);
-    expect(formatted).toBe(`{\r\n  "foo": "bar"\r\n}`);
+    expect(result).toEqual([
+      {
+        range: {
+          start: { line: 0, character: 1 },
+          end: { line: 0, character: 1 }
+        },
+        newText: "\r\n  "
+      },
+      {
+        range: {
+          start: { line: 0, character: 7 },
+          end: { line: 0, character: 7 }
+        },
+        newText: " "
+      },
+      {
+        range: {
+          start: { line: 0, character: 12 },
+          end: { line: 0, character: 12 }
+        },
+        newText: "\r\n"
+      },
+      {
+        range: {
+          start: { line: 0, character: 13 },
+          end: { line: 1, character: 0 }
+        },
+        newText: ""
+      }
+    ]);
   });
 
   test("should handle formatting invalid JSON documents gracefully", async () => {
@@ -84,31 +152,44 @@ describe("Formatting", () => {
       }
     })) as TextEdit[];
 
-    // Even if it has syntax errors, formatting should either return some edits or return safely without throwing
     expect(result).toBeDefined();
-    if (result.length > 0) {
-      const formatted = applyEdits(originalText, result);
-      expect(formatted).toContain("foo");
-    }
+    expect(result).toEqual([
+      {
+        range: {
+          start: { line: 0, character: 1 },
+          end: { line: 0, character: 1 }
+        },
+        newText: "\n  "
+      }
+    ]);
+  });
+
+  test("should format JSON range", async () => {
+    const originalText = `{"foo":"bar","baz":"qux"}`;
+    await client.writeDocument("test.json", originalText);
+    const uri = await client.openDocument("test.json");
+
+    const result = (await client.sendRequest("textDocument/rangeFormatting", {
+      textDocument: { uri: uri.toString() },
+      range: {
+        start: { line: 0, character: 13 },
+        end: { line: 0, character: 24 }
+      },
+      options: {
+        tabSize: 2,
+        insertSpaces: true
+      }
+    })) as TextEdit[];
+
+    expect(result).toBeDefined();
+    expect(result).toEqual([
+      {
+        range: {
+          start: { line: 0, character: 19 },
+          end: { line: 0, character: 19 }
+        },
+        newText: " "
+      }
+    ]);
   });
 });
-
-function applyEdits(text: string, edits: TextEdit[]): string {
-  const tempDoc = TextDocument.create("temp.json", "json", 0, text);
-
-  // Sort from bottom to top (descending line/character) to prevent offset shifts
-  const sortedEdits = [...edits].sort((a, b) => {
-    if (b.range.start.line !== a.range.start.line) {
-      return b.range.start.line - a.range.start.line;
-    }
-    return b.range.start.character - a.range.start.character;
-  });
-
-  const changes = sortedEdits.map((edit) => ({
-    range: edit.range,
-    text: edit.newText
-  }));
-
-  TextDocument.update(tempDoc, changes, 1);
-  return tempDoc.getText();
-}
