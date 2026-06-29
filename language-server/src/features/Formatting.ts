@@ -1,12 +1,18 @@
 import { EOL } from "node:os";
 import * as jsonc from "jsonc-parser";
-import { Server } from "../services/Server.ts";
 
-import type { ServerCapabilities, TextEdit, DocumentFormattingParams, DocumentRangeFormattingParams } from "vscode-languageserver";
+import type { ServerCapabilities, DocumentFormattingParams, DocumentRangeFormattingParams } from "vscode-languageserver";
+import type { Server } from "../services/Server.ts";
 import type { JsonDocuments } from "../services/JsonDocuments.ts";
 
 export class Formatting {
-  constructor(server: Server, documents: JsonDocuments) {
+  private server: Server;
+  private jsonDocuments: JsonDocuments;
+
+  constructor(server: Server, jsonDocuments: JsonDocuments) {
+    this.server = server;
+    this.jsonDocuments = jsonDocuments;
+
     server.onInitialize(() => {
       const serverCapabilities: ServerCapabilities = {
         documentFormattingProvider: true,
@@ -15,71 +21,51 @@ export class Formatting {
       return { capabilities: serverCapabilities };
     });
 
-    server.onDocumentFormatting((params: DocumentFormattingParams): TextEdit[] => {
-      const document = documents.get(params.textDocument.uri);
-      if (!document) {
-        return [];
-      }
-
-      try {
-        const text = document.getText();
-        const options = params.options;
-
-        const edits = jsonc.format(text, undefined, {
-          tabSize: options.tabSize,
-          insertSpaces: options.insertSpaces,
-          eol: EOL
-        });
-
-        return edits.map((edit) => ({
-          range: {
-            start: document.positionAt(edit.offset),
-            end: document.positionAt(edit.offset + edit.length)
-          },
-          newText: edit.content
-        }));
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        server.console.error(`Failed to format document: ${message}`);
-        return [];
-      }
+    server.onDocumentFormatting((params) => {
+      return this.format(params);
     });
 
-    server.onDocumentRangeFormatting((params: DocumentRangeFormattingParams): TextEdit[] => {
-      const document = documents.get(params.textDocument.uri);
-      if (!document) {
-        return [];
-      }
-
-      try {
-        const text = document.getText();
-        const options = params.options;
-        const range = params.range;
-
-        const startOffset = document.offsetAt(range.start);
-        const endOffset = document.offsetAt(range.end);
-
-        const edits = jsonc.format(text, {
-          offset: startOffset,
-          length: endOffset - startOffset
-        }, {
-          tabSize: options.tabSize,
-          insertSpaces: options.insertSpaces,
-          eol: EOL
-        });
-
-        return edits.map((edit) => ({
-          range: {
-            start: document.positionAt(edit.offset),
-            end: document.positionAt(edit.offset + edit.length)
-          },
-          newText: edit.content
-        }));
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        server.console.error(`Failed to format range: ${message}`);
-        return [];
-      }
+    server.onDocumentRangeFormatting((params) => {
+      return this.format(params);
     });
+  }
+
+  private format(params: DocumentFormattingParams | DocumentRangeFormattingParams) {
+    const jsonDocument = this.jsonDocuments.get(params.textDocument.uri);
+    if (!jsonDocument) {
+      return;
+    }
+
+    let range: jsonc.Range | undefined;
+    if ("range" in params) {
+      const startOffset = jsonDocument.offsetAt(params.range.start);
+      const endOffset = jsonDocument.offsetAt(params.range.end);
+      range = {
+        offset: startOffset,
+        length: endOffset - startOffset
+      };
+    }
+
+    try {
+      const text = jsonDocument.getText();
+
+      const edits = jsonc.format(text, range, {
+        tabSize: params.options.tabSize,
+        insertSpaces: params.options.insertSpaces,
+        insertFinalNewline: true,
+        eol: EOL
+      });
+
+      return edits.map((edit) => ({
+        range: {
+          start: jsonDocument.positionAt(edit.offset),
+          end: jsonDocument.positionAt(edit.offset + edit.length)
+        },
+        newText: edit.content
+      }));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.server.console.error(`Failed to format ${range ? "range" : "document"}: ${message}`);
+    }
   }
 }
