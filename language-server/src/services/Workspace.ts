@@ -6,12 +6,17 @@ import {
   ServerCapabilities
 } from "vscode-languageserver";
 import { Server } from "./Server.ts";
+import { ReadFileRequest } from "../protocol/hyperjump-readFile.ts";
+import { FindFilesRequest } from "../protocol/hyperjump-findFiles.ts";
 
 export class Workspace {
+  private server: Server;
   private _workspaceFolders: Set<string> = new Set();
   private didChangeWatchedFilesHandlers: Set<NotificationHandler<DidChangeWatchedFilesParams>>;
 
   constructor(server: Server) {
+    this.server = server;
+
     let hasWorkspaceWatchCapability = false;
     let hasWorkspaceFolderCapability = false;
 
@@ -81,5 +86,13 @@ export class Workspace {
         this.didChangeWatchedFilesHandlers.delete(handler);
       }
     };
+  }
+
+  async readFile(uri: string) {
+    return await this.server.sendRequest(ReadFileRequest.type, { uri });
+  }
+
+  async findFiles(include: string, exclude?: string, maxResults?: number) {
+    return await this.server.sendRequest(FindFilesRequest.type, { include, exclude, maxResults });
   }
 }

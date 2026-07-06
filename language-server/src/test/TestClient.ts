@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, glob, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { Duplex } from "node:stream";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -18,10 +18,14 @@ import {
   ShutdownRequest
 } from "vscode-languageserver";
 import { createConnection } from "vscode-languageserver/node";
-import { resolveIri } from "@hyperjump/uri";
+import { normalizeIri, resolveIri } from "@hyperjump/uri";
 import { merge } from "merge-anything";
 import { MockAgent, setGlobalDispatcher } from "undici";
+import ignore from "ignore";
+import * as Pact from "@hyperjump/pact";
 import { buildServer, LanguageServerSettings } from "../build-server.js";
+import { FindFilesRequest } from "../protocol/hyperjump-findFiles.ts";
+import { ReadFileRequest } from "../protocol/hyperjump-readFile.ts";
 
 import type {
   Connection,
@@ -40,6 +44,7 @@ export class TestClient {
   private openDocuments: Set<string>;
   private workspaceFolder: Promise<string>;
   private ready: Promise<void>;
+  private gitignore: Promise<string>;
 
   onRequest: Connection["onRequest"];
   sendRequest: Connection["sendRequest"];
@@ -54,7 +59,15 @@ export class TestClient {
     this.watchEnabled = false;
     this.openDocuments = new Set();
     this.workspaceFolder = mkdtemp(join(tmpdir(), "test-workspace-"))
-      .then((path) => pathToFileURL(path) + "/");
+      .then((path) => normalizeIri(pathToFileURL(path) + "/"));
+    this.gitignore = this.workspaceFolder.then(async (rootPath) => {
+      const gitignorePath = join(rootPath, ".gitignore");
+      try {
+        return await readFile(gitignorePath, "utf8");
+      } catch {
+        return "";
+      }
+    });
 
     this.mockAgent = new MockAgent();
     this.mockAgent.disableNetConnect();
@@ -100,6 +113,28 @@ export class TestClient {
             throw Error(`Unsupported configuration section: ${configurationItem.section}`);
         }
       });
+    });
+
+    this.client.onRequest(ReadFileRequest.type, async (params) => {
+      const path = fileURLToPath(params.uri);
+      return await readFile(path, "utf8");
+    });
+
+    this.client.onRequest(FindFilesRequest.type, async (params) => {
+      const ig = ignore()
+        .add(await this.gitignore)
+        .add(params.exclude ?? "");
+
+      const workspacePath = fileURLToPath(await this.workspaceFolder);
+
+      return await Pact.pipe(
+        glob(params.include, { cwd: workspacePath }),
+        Pact.asyncFilter((file) => !ig.ignores(file)),
+        Pact.asyncMap((relativePath: string) => join(workspacePath, relativePath)),
+        Pact.asyncMap((fullPath: string) => pathToFileURL(fullPath).toString()),
+        Pact.asyncTake(params.maxResults ?? Number.MAX_SAFE_INTEGER),
+        Pact.asyncCollectArray
+      );
     });
 
     this.client.listen();

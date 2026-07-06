@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { HoverRequest, PublishDiagnosticsNotification } from "vscode-languageserver";
 import { TestClient } from "../test/TestClient.ts";
-import { unregisterSchema } from "@hyperjump/json-schema";
 
 describe("Hover", () => {
   let client: TestClient;
@@ -14,10 +13,6 @@ describe("Hover", () => {
 
   afterEach(async () => {
     await client.stop();
-  });
-
-  afterEach(() => {
-    unregisterSchema(fixtureSchemaUri);
   });
 
   test("should return title and description on hover over a property value", async () => {
