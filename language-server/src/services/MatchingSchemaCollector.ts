@@ -1,3 +1,5 @@
+import { has } from "@hyperjump/json-schema/instance/experimental";
+
 import type { EvaluationPlugin, ValidationContext } from "@hyperjump/json-schema/experimental";
 import type { JsonNode } from "@hyperjump/json-schema/instance/experimental";
 import type { Node, Keyword } from "@hyperjump/json-schema/experimental";
@@ -10,6 +12,7 @@ type SchemaAnnotationContext = ValidationContext & {
   passedProperties?: Set<string>;
   failedProperties?: Set<string>;
   rejectedProperties?: Set<string>;
+  negated?: boolean;
 };
 
 type Alternative = {
@@ -21,6 +24,7 @@ export class MatchingSchemaCollector implements EvaluationPlugin {
   private annotations: Map<string, Annotation[]> = new Map();
   private alternatives: Map<string, Alternative[]> = new Map();
   private acceptedProperties: Map<string, Set<string>> = new Map();
+  private forbiddenProperties: Map<string, Set<string>> = new Map();
 
   beforeSchema(_url: string, _instance: JsonNode, context: SchemaAnnotationContext): void {
     context.pendingAnnotations = {};
@@ -28,8 +32,25 @@ export class MatchingSchemaCollector implements EvaluationPlugin {
     context.rejectedProperties = undefined;
   }
 
+  beforeKeyword(node: Node<unknown>, _instance: JsonNode, context: SchemaAnnotationContext, schemaContext: SchemaAnnotationContext): void {
+    const [keywordId] = node;
+    const negated = schemaContext.negated ?? false;
+
+    context.negated = keywordId === "https://json-schema.org/keyword/not" ? !negated : negated;
+  }
+
   afterKeyword(node: Node<unknown>, instance: JsonNode, context: SchemaAnnotationContext, _valid: boolean, schemaContext: SchemaAnnotationContext, keyword: Keyword<unknown>): void {
     const [keywordId, , keywordValue] = node;
+
+    if (keywordId === "https://json-schema.org/keyword/required" && schemaContext.negated && instance.type === "object") {
+      const required = keywordValue as string[];
+      const missing = required.filter((propertyName) => !has(propertyName, instance));
+      if (missing.length === 1) {
+        const forbiddenProperties = this.forbiddenProperties.get(instance.pointer) ?? new Set();
+        forbiddenProperties.add(missing[0]);
+        this.forbiddenProperties.set(instance.pointer, forbiddenProperties);
+      }
+    }
 
     if (keywordId === "https://json-schema.org/keyword/properties") {
       schemaContext.declaredProperties = Object.keys(keywordValue as Record<string, string>);
@@ -103,7 +124,8 @@ export class MatchingSchemaCollector implements EvaluationPlugin {
       }
     }
 
-    return propertyNames;
+    const forbiddenProperties = this.forbiddenProperties.get(instanceLocation);
+    return forbiddenProperties ? propertyNames.difference(forbiddenProperties) : propertyNames;
   }
 }
 
