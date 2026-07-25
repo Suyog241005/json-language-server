@@ -842,7 +842,7 @@ describe("Completions", () => {
   });
 
   // TODO: would make more sense for value completion rather than property completion
-  test.skip("anyOf: omits a candidate property whose type would violate the additionalProperties constraint of a compatible branch", async () => {
+  test("anyOf: omits a candidate property whose type would violate the additionalProperties constraint of a compatible branch", async () => {
     const diagnostics: Promise<void> = new Promise((resolve) => {
       client.onNotification(PublishDiagnosticsNotification.type, () => {
         resolve();
@@ -890,7 +890,8 @@ describe("Completions", () => {
     });
 
     expect(completions).toEqual([
-      { label: "foo", kind: CompletionItemKind.Property }
+      { label: "foo", kind: CompletionItemKind.Property },
+      { label: "a", kind: CompletionItemKind.Property }
     ]);
   });
 });
