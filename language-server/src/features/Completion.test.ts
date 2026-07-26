@@ -841,6 +841,47 @@ describe("Completions", () => {
     ]);
   });
 
+  test("not: suggests a property declared inside 'not' since that key can still appear", async () => {
+    const diagnostics: Promise<void> = new Promise((resolve) => {
+      client.onNotification(PublishDiagnosticsNotification.type, () => {
+        resolve();
+      });
+    });
+
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "foo": { "type": "string" }
+      },
+      "not": {
+        "properties": {
+          "bar": { "type": "string" }
+        }
+      }
+    }`);
+
+    const instanceText = `{
+      "$schema": "${fixtureSchemaUri}",
+      ""
+    }`;
+
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    await diagnostics;
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 7 }
+    });
+
+    expect(completions).toEqual([
+      { label: "bar", kind: CompletionItemKind.Property },
+      { label: "foo", kind: CompletionItemKind.Property }
+    ]);
+  });
+
   test("not: a forbidden property that is not declared should never be suggested", async () => {
     const diagnostics: Promise<void> = new Promise((resolve) => {
       client.onNotification(PublishDiagnosticsNotification.type, () => {
