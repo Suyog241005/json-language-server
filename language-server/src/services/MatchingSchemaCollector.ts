@@ -1,4 +1,4 @@
-import { has } from "@hyperjump/json-schema/instance/experimental";
+import * as Instance from "@hyperjump/json-schema/instance/experimental";
 
 import type { EvaluationPlugin, ValidationContext } from "@hyperjump/json-schema/experimental";
 import type { JsonNode } from "@hyperjump/json-schema/instance/experimental";
@@ -8,16 +8,18 @@ type Annotation = Record<string, unknown>;
 
 type SchemaAnnotationContext = ValidationContext & {
   pendingAnnotations?: Annotation;
-  declaredProperties?: string[];
+  declaredProperties?: Set<string>;
   passedProperties?: Set<string>;
   failedProperties?: Set<string>;
   rejectedProperties?: Set<string>;
   negated?: boolean;
+  isAlternative?: boolean;
 };
 
 type Alternative = {
-  declaredProperties: string[];
+  declaredProperties: Set<string>;
   rejectedProperties: Set<string>;
+  isAlternative: boolean;
 };
 
 export class MatchingSchemaCollector implements EvaluationPlugin {
@@ -35,8 +37,10 @@ export class MatchingSchemaCollector implements EvaluationPlugin {
   beforeKeyword(node: Node<unknown>, _instance: JsonNode, context: SchemaAnnotationContext, schemaContext: SchemaAnnotationContext): void {
     const [keywordId] = node;
     const negated = schemaContext.negated ?? false;
-
     context.negated = keywordId === "https://json-schema.org/keyword/not" ? !negated : negated;
+
+    const alternative = schemaContext.isAlternative ?? false;
+    context.isAlternative = keywordId === "https://json-schema.org/keyword/anyOf" || keywordId === "https://json-schema.org/keyword/oneOf" ? true : alternative;
   }
 
   afterKeyword(node: Node<unknown>, instance: JsonNode, context: SchemaAnnotationContext, _valid: boolean, schemaContext: SchemaAnnotationContext, keyword: Keyword<unknown>): void {
@@ -44,7 +48,8 @@ export class MatchingSchemaCollector implements EvaluationPlugin {
 
     if (keywordId === "https://json-schema.org/keyword/required" && schemaContext.negated && instance.type === "object") {
       const required = keywordValue as string[];
-      const missing = required.filter((propertyName) => !has(propertyName, instance));
+      const missing = required.filter((propertyName) => !Instance.has(propertyName, instance));
+
       if (missing.length === 1) {
         const forbiddenProperties = this.forbiddenProperties.get(instance.pointer) ?? new Set();
         forbiddenProperties.add(missing[0]);
@@ -53,7 +58,17 @@ export class MatchingSchemaCollector implements EvaluationPlugin {
     }
 
     if (keywordId === "https://json-schema.org/keyword/properties") {
-      schemaContext.declaredProperties = Object.keys(keywordValue as Record<string, string>);
+      schemaContext.declaredProperties ??= new Set();
+      for (const propertyName in keywordValue as Record<string, unknown>) {
+        schemaContext.declaredProperties.add(propertyName);
+      }
+    }
+
+    if (keywordId === "https://json-schema.org/keyword/required") {
+      schemaContext.declaredProperties ??= new Set();
+      for (const propertyName of keywordValue as string[]) {
+        schemaContext.declaredProperties.add(propertyName);
+      }
     }
 
     if (keywordId === "https://json-schema.org/keyword/properties" || keywordId === "https://json-schema.org/keyword/additionalProperties" || keywordId === "https://json-schema.org/keyword/patternProperties") {
@@ -96,15 +111,16 @@ export class MatchingSchemaCollector implements EvaluationPlugin {
   }
 
   private recordAlternative(instanceLocation: string, context: SchemaAnnotationContext): void {
-    const declaredProperties = context.declaredProperties ?? [];
+    const declaredProperties = context.declaredProperties ?? new Set<string>();
     const rejectedProperties = context.rejectedProperties ?? new Set<string>();
+    const isAlternative = context.isAlternative ?? false;
 
-    if (declaredProperties.length === 0 && rejectedProperties.size === 0) {
+    if (declaredProperties.size === 0 && rejectedProperties.size === 0) {
       return;
     }
 
     const alternatives = this.alternatives.get(instanceLocation) ?? [];
-    alternatives.push({ declaredProperties, rejectedProperties });
+    alternatives.push({ declaredProperties, rejectedProperties, isAlternative });
     this.alternatives.set(instanceLocation, alternatives);
   }
 
@@ -119,7 +135,7 @@ export class MatchingSchemaCollector implements EvaluationPlugin {
     const propertyNames = new Set<string>();
     for (const alternative of alternatives) {
       const isContradicted = [...alternative.rejectedProperties].some((propertyName) => acceptedProperties.has(propertyName));
-      if (!isContradicted) {
+      if (!alternative.isAlternative || !isContradicted) {
         addAll(propertyNames, alternative.declaredProperties);
       }
     }

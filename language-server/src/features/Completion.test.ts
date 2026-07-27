@@ -215,6 +215,56 @@ describe("Completions", () => {
     ]);
   });
 
+  test("allOf: does not drop property just because some property fails", async () => {
+    const diagnostics: Promise<void> = new Promise((resolve) => {
+      client.onNotification(PublishDiagnosticsNotification.type, () => {
+        resolve();
+      });
+    });
+
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "allOf": [
+        {
+          "properties": {
+            "foo": { "type": "string" },
+            "bar": { "type": "string" }
+          },
+          "required": ["foo"]
+        },
+        {
+          "properties": {
+            "foo": { "type": "string", "minLength": 3 },
+            "baz": { "type": "string" }
+          },
+          "required": ["foo"]
+        }
+      ]
+    }`);
+
+    const instanceText = `{
+      "$schema": "${fixtureSchemaUri}",
+      "foo": "a",
+      ""
+    }`;
+
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    await diagnostics;
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 3, character: 7 }
+    });
+
+    expect(completions).toEqual([
+      { label: "bar", kind: CompletionItemKind.Property },
+      { label: "baz", kind: CompletionItemKind.Property }
+    ]);
+  });
+
   test("completion returns the union across a discriminated anyOf", async () => {
     const diagnostics: Promise<void> = new Promise((resolve) => {
       client.onNotification(PublishDiagnosticsNotification.type, () => {
@@ -882,6 +932,80 @@ describe("Completions", () => {
     ]);
   });
 
+  test("required properties are suggested even if they aren't declared", async () => {
+    const diagnostics: Promise<void> = new Promise((resolve) => {
+      client.onNotification(PublishDiagnosticsNotification.type, () => {
+        resolve();
+      });
+    });
+
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["foo"]
+    }`);
+
+    const instanceText = `{
+      "$schema": "${fixtureSchemaUri}",
+      ""
+    }`;
+
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    await diagnostics;
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 7 }
+    });
+
+    expect(completions).toEqual([
+      { label: "foo", kind: CompletionItemKind.Property }
+    ]);
+  });
+
+  test("nested not: even number of 'not' should have no effect on completion", async () => {
+    const diagnostics: Promise<void> = new Promise((resolve) => {
+      client.onNotification(PublishDiagnosticsNotification.type, () => {
+        resolve();
+      });
+    });
+
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "foo": { "type": "string" }
+      },
+      "not": {
+        "not": {
+          "required": ["bar"] 
+        }
+      }
+    }`);
+
+    const instanceText = `{
+      "$schema": "${fixtureSchemaUri}",
+      ""
+    }`;
+
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    await diagnostics;
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 7 }
+    });
+
+    expect(completions).toEqual([
+      { label: "bar", kind: CompletionItemKind.Property },
+      { label: "foo", kind: CompletionItemKind.Property }
+    ]);
+  });
+
   test("not: a forbidden property that is not declared should never be suggested", async () => {
     const diagnostics: Promise<void> = new Promise((resolve) => {
       client.onNotification(PublishDiagnosticsNotification.type, () => {
@@ -1072,8 +1196,7 @@ describe("Completions", () => {
     expect(completions).toEqual([]);
   });
 
-  // TODO: would make more sense for value completion rather than property completion
-  test.skip("anyOf: omits a candidate property whose type would violate the additionalProperties constraint of a compatible branch", async () => {
+  test("anyOf: omits a candidate property whose type would violate the additionalProperties constraint of a compatible branch", async () => {
     const diagnostics: Promise<void> = new Promise((resolve) => {
       client.onNotification(PublishDiagnosticsNotification.type, () => {
         resolve();
@@ -1106,7 +1229,7 @@ describe("Completions", () => {
 
     const instanceText = `{
       "$schema": "${fixtureSchemaUri}",
-      "c": true,
+      "a": "",
       ""
     }`;
 
@@ -1121,8 +1244,7 @@ describe("Completions", () => {
     });
 
     expect(completions).toEqual([
-      { label: "foo", kind: CompletionItemKind.Property },
-      { label: "a", kind: CompletionItemKind.Property }
+      { label: "c", kind: CompletionItemKind.Property }
     ]);
   });
 });
