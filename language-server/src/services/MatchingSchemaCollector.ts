@@ -6,7 +6,7 @@ import type { Node, Keyword } from "@hyperjump/json-schema/experimental";
 
 type Annotation = Record<string, unknown>;
 
-type SchemaAnnotationContext = ValidationContext & {
+type MatchingSchemaContext = ValidationContext & {
   pendingAnnotations?: Annotation;
   declaredProperties?: Set<string>;
   passedProperties?: Set<string>;
@@ -28,23 +28,30 @@ export class MatchingSchemaCollector implements EvaluationPlugin {
   private acceptedProperties: Map<string, Set<string>> = new Map();
   private forbiddenProperties: Map<string, Set<string>> = new Map();
 
-  beforeSchema(_url: string, _instance: JsonNode, context: SchemaAnnotationContext): void {
+  beforeSchema(_url: string, _instance: JsonNode, context: MatchingSchemaContext): void {
     context.pendingAnnotations = {};
     context.declaredProperties = undefined;
     context.rejectedProperties = undefined;
   }
 
-  beforeKeyword(node: Node<unknown>, _instance: JsonNode, context: SchemaAnnotationContext, schemaContext: SchemaAnnotationContext): void {
+  beforeKeyword(node: Node<unknown>, _instance: JsonNode, context: MatchingSchemaContext, schemaContext: MatchingSchemaContext): void {
     const [keywordId] = node;
     const negated = schemaContext.negated ?? false;
     context.negated = keywordId === "https://json-schema.org/keyword/not" ? !negated : negated;
 
     const alternative = schemaContext.isAlternative ?? false;
-    context.isAlternative = keywordId === "https://json-schema.org/keyword/anyOf" || keywordId === "https://json-schema.org/keyword/oneOf" ? true : alternative;
+    context.isAlternative = keywordId === "https://json-schema.org/keyword/anyOf" || keywordId === "https://json-schema.org/keyword/oneOf"
+      ? true
+      : alternative;
   }
 
-  afterKeyword(node: Node<unknown>, instance: JsonNode, context: SchemaAnnotationContext, _valid: boolean, schemaContext: SchemaAnnotationContext, keyword: Keyword<unknown>): void {
+  afterKeyword(node: Node<unknown>, instance: JsonNode, context: MatchingSchemaContext, _valid: boolean, schemaContext: MatchingSchemaContext, keyword: Keyword<unknown>): void {
     const [keywordId, , keywordValue] = node;
+
+    if (keyword.annotation) {
+      schemaContext.pendingAnnotations ??= {};
+      schemaContext.pendingAnnotations[keywordId] = keyword.annotation(keywordValue, instance, context);
+    }
 
     if (keywordId === "https://json-schema.org/keyword/required" && schemaContext.negated && instance.type === "object") {
       const required = keywordValue as string[];
@@ -72,63 +79,48 @@ export class MatchingSchemaCollector implements EvaluationPlugin {
     }
 
     if (keywordId === "https://json-schema.org/keyword/properties" || keywordId === "https://json-schema.org/keyword/additionalProperties" || keywordId === "https://json-schema.org/keyword/patternProperties") {
-      const acceptedProperties = this.acceptedProperties.get(instance.pointer) ?? new Set();
-      addAll(acceptedProperties, context.passedProperties);
-      this.acceptedProperties.set(instance.pointer, acceptedProperties);
+      if (!this.acceptedProperties.has(instance.pointer)) {
+        this.acceptedProperties.set(instance.pointer, new Set());
+      }
+      addAll(this.acceptedProperties.get(instance.pointer)!, context.passedProperties);
 
-      addAll(schemaContext.rejectedProperties ??= new Set(), context.failedProperties);
-    }
-
-    if (keyword.annotation) {
-      schemaContext.pendingAnnotations ??= {};
-      schemaContext.pendingAnnotations[keywordId] = keyword.annotation(keywordValue, instance, context);
+      schemaContext.rejectedProperties ??= new Set();
+      addAll(schemaContext.rejectedProperties, context.failedProperties);
     }
   }
 
-  afterSchema(_schemaUri: string, instance: JsonNode, context: SchemaAnnotationContext, valid: boolean): void {
-    const instanceLocation = instance.pointer;
+  afterSchema(_schemaUri: string, instance: JsonNode, context: MatchingSchemaContext, valid: boolean): void {
+    if (valid && context.pendingAnnotations) {
+      if (!this.annotations.has(instance.pointer)) {
+        this.annotations.set(instance.pointer, []);
+      }
 
-    const propertyName = propertyNameOf(instanceLocation);
+      const existing = this.annotations.get(instance.pointer)!;
+      existing.push(context.pendingAnnotations);
+    }
+
+    const propertyName = propertyNameOf(instance.pointer);
     if (propertyName !== undefined) {
       const outcome = valid ? (context.passedProperties ??= new Set()) : (context.failedProperties ??= new Set());
       outcome.add(propertyName);
     }
 
-    this.recordAlternative(instanceLocation, context);
-
-    const annotations = context.pendingAnnotations;
-
-    if (!valid || !annotations) {
-      return;
-    }
-
-    if (!this.annotations.has(instanceLocation)) {
-      this.annotations.set(instanceLocation, []);
-    }
-
-    const existing = this.annotations.get(instanceLocation)!;
-    existing.push(annotations);
-  }
-
-  private recordAlternative(instanceLocation: string, context: SchemaAnnotationContext): void {
     const declaredProperties = context.declaredProperties ?? new Set<string>();
     const rejectedProperties = context.rejectedProperties ?? new Set<string>();
     const isAlternative = context.isAlternative ?? false;
 
-    if (declaredProperties.size === 0 && rejectedProperties.size === 0) {
-      return;
+    if (declaredProperties.size > 0 || rejectedProperties.size > 0) {
+      const alternatives = this.alternatives.get(instance.pointer) ?? [];
+      alternatives.push({ declaredProperties, rejectedProperties, isAlternative });
+      this.alternatives.set(instance.pointer, alternatives);
     }
-
-    const alternatives = this.alternatives.get(instanceLocation) ?? [];
-    alternatives.push({ declaredProperties, rejectedProperties, isAlternative });
-    this.alternatives.set(instanceLocation, alternatives);
   }
 
   getAnnotations(instanceLocation: string): Annotation[] {
     return this.annotations.get(instanceLocation) ?? [];
   }
 
-  getPropertyNames(instanceLocation: string): Set<string> {
+  getDeclaredProperties(instanceLocation: string): Set<string> {
     const alternatives = this.alternatives.get(instanceLocation) ?? [];
     const acceptedProperties = this.acceptedProperties.get(instanceLocation) ?? new Set();
 

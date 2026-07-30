@@ -19,31 +19,33 @@ export class Completion {
     });
 
     server.onCompletion(async (params) => {
-      const document = jsonDocuments.get(params.textDocument.uri)!;
-      const keyNode = document.findNodeAtPosition(params.position);
-      const propertyNode = keyNode?.parent;
-      const objectNode = propertyNode?.parent;
-      if (!objectNode) {
+      const jsonDocument = jsonDocuments.get(params.textDocument.uri)!;
+      const keyNode = jsonDocument.findNodeAtPosition(params.position)!;
+      const propertyNode = keyNode.parent;
+
+      if (propertyNode?.type !== "property" || propertyNode.children![0] !== keyNode) {
         return [];
       }
 
-      const isAtPropertyKey = propertyNode?.type === "property" && propertyNode.children?.[0] === keyNode;
-      if (!isAtPropertyKey) {
-        return [];
+      const objectNode = propertyNode.parent!;
+
+      const propertyNames = await jsonDocument.getDeclaredProperties(objectNode);
+      for (const node of objectNode.children!) {
+        if (node === propertyNode) {
+          continue;
+        }
+
+        propertyNames.delete(node.children![0].value);
       }
 
-      const propertyNames = await document.getPropertyNames(objectNode);
-
-      const existingKeys = new Set(
-        (objectNode.children ?? [])
-          .filter((property) => property !== propertyNode)
-          .map((property) => property.children?.[0]?.value as string)
-      );
-
-      return [...propertyNames.difference(existingKeys)].map((propertyName): CompletionItem => ({
-        label: propertyName,
-        kind: CompletionItemKind.Property
-      }));
+      const completionItems: CompletionItem[] = [];
+      for (const propertyName of propertyNames) {
+        completionItems.push({
+          label: propertyName,
+          kind: CompletionItemKind.Property
+        });
+      }
+      return completionItems;
     });
   }
 }

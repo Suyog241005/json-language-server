@@ -105,7 +105,7 @@ describe("Completions", () => {
     const instanceText = `{
       "$schema": "${fixtureSchemaUri}",
       "address": {
-      ""
+        ""
       }
     }`;
 
@@ -116,7 +116,7 @@ describe("Completions", () => {
 
     const completions = await client.sendRequest(CompletionRequest.type, {
       textDocument: { uri },
-      position: { line: 3, character: 7 }
+      position: { line: 3, character: 9 }
     });
 
     expect(completions).toEqual([
@@ -1204,7 +1204,7 @@ describe("Completions", () => {
     });
 
     fixtureSchemaUri = await client.writeDocument("schema.json", `{
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "anyOf": [
         {
           "type": "object",
