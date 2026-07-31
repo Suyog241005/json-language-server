@@ -110,10 +110,6 @@ export class JsonDocument implements TextDocument {
     this.validate();
   }
 
-  getAst() {
-    return this.ast;
-  }
-
   getParseErrors() {
     return this.parseErrors;
   }
@@ -179,5 +175,19 @@ export class JsonDocument implements TextDocument {
 
     const offset = this.offsetAt(position);
     return jsonc.findNodeAtOffset(this.ast, offset);
+  }
+
+  walkNodes(node: jsonc.Node, fn: (node: jsonc.Node) => void) {
+    fn(node);
+
+    if (node.type === "array") {
+      for (const childNode of node.children!) {
+        this.walkNodes(childNode, fn);
+      }
+    } else if (node.type === "object") {
+      for (const propertyNode of node.children!) {
+        this.walkNodes(propertyNode.children![1], fn);
+      }
+    }
   }
 }
