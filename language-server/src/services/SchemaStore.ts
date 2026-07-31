@@ -5,7 +5,7 @@ import { compile, getSchema, getKeywordName } from "@hyperjump/json-schema/exper
 import { registerSchema, unregisterSchema } from "@hyperjump/json-schema";
 import { evaluateCompiledSchema } from "@hyperjump/json-schema-errors";
 import { addUriSchemePlugin, httpSchemePlugin } from "@hyperjump/browser";
-import { normalizeIri, toAbsoluteIri } from "@hyperjump/uri";
+import { normalizeIri, resolveIri, toAbsoluteIri } from "@hyperjump/uri";
 import * as jsonc from "jsonc-parser";
 import * as Pact from "@hyperjump/pact";
 import ignore from "ignore";
@@ -205,24 +205,28 @@ export class SchemaStore {
       const schema = jsonc.parse(text);
 
       if (typeof schema?.["$schema"] === "string") {
-        const dialectId = toAbsoluteIri(schema.$schema);
+        const dialectId = toAbsoluteIri(resolveIri(schema.$schema, fileUri));
         const idKeyword = getKeywordName(dialectId, "https://json-schema.org/keyword/id")
           || getKeywordName(dialectId, "https://json-schema.org/keyword/draft-04/id");
 
         if (idKeyword) {
           const id = schema[idKeyword];
           if (typeof id === "string") {
-            unregisterSchema(id);
-            registerSchema(schema);
-            this.workspaceSchemaUris.set(fileUri, id);
+            try {
+              unregisterSchema(id);
+              registerSchema(schema);
+              this.workspaceSchemaUris.set(fileUri, id);
 
-            this.server.console.log(`Registered local schema: ${id} (from ${fileUri})`);
+              this.server.console.log(`Registered local schema: ${id} (from ${fileUri})`);
+            } catch (error: unknown) {
+              const message = error instanceof Error ? error.message : String(error);
+              this.server.console.error(`Failed to process local schema at ${fileUri}: ${message}`);
+            }
           }
         }
       }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.server.console.error(`Failed to process local schema at ${fileUri}: ${message}`);
+    } catch {
+      // Not a schema
     }
   }
 }
