@@ -15,6 +15,7 @@ export class Diagnostics {
   private server: Server;
   private jsonDocuments: JsonDocuments;
   private providers: DiagnosticsProvider[];
+  private pendingSends: Map<string, { cancelled: boolean }> = new Map();
 
   constructor(server: Server, jsonDocuments: JsonDocuments, workspace: Workspace, providers: DiagnosticsProvider[]) {
     this.server = server;
@@ -34,16 +35,27 @@ export class Diagnostics {
   }
 
   private async sendDiagnostics(document: JsonDocument) {
+    const previous = this.pendingSends.get(document.uri);
+    if (previous) {
+      previous.cancelled = true;
+    }
+
+    const pending = { cancelled: false };
+    this.pendingSends.set(document.uri, pending);
+
     const diagnostics = [];
     for (const provider of this.providers) {
       diagnostics.push(...await provider.getDiagnostics(document));
     }
 
-    await this.server.sendDiagnostics({
-      uri: document.uri,
-      diagnostics: diagnostics
-    });
-    this.server.console.log(`send diagnostics for ${abbreviateUri(document.uri)}`);
+    if (!pending.cancelled) {
+      this.pendingSends.delete(document.uri);
+      await this.server.sendDiagnostics({
+        uri: document.uri,
+        diagnostics: diagnostics
+      });
+      this.server.console.log(`send diagnostics for ${abbreviateUri(document.uri)}`);
+    }
   }
 
   private async revalidateDependentDocuments(schemaUri: string) {
