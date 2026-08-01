@@ -9,6 +9,8 @@
     "checkJs": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
     "noEmit": true,
     "types": ["node"]
   }

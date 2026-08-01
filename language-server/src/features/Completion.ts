@@ -1,8 +1,8 @@
-import { CompletionItemKind, ServerCapabilities } from "vscode-languageserver";
+import { CompletionItemKind } from "vscode-languageserver";
 import { JsonDocuments } from "../services/JsonDocuments.ts";
 
 import type { Server } from "../services/Server.ts";
-import type { CompletionItem } from "vscode-languageserver";
+import type { CompletionItem, ServerCapabilities } from "vscode-languageserver";
 
 export class Completion {
   constructor(server: Server, jsonDocuments: JsonDocuments) {

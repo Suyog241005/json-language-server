@@ -23,7 +23,7 @@ import { merge } from "merge-anything";
 import { MockAgent, setGlobalDispatcher } from "undici";
 import ignore from "ignore";
 import * as Pact from "@hyperjump/pact";
-import { buildServer, LanguageServerSettings } from "../build-server.js";
+import { buildServer } from "../build-server.js";
 import { FindFilesRequest } from "../protocol/hyperjump-findFiles.ts";
 import { ReadFileRequest } from "../protocol/hyperjump-readFile.ts";
 
@@ -33,6 +33,7 @@ import type {
   InitializeParams,
   ServerCapabilities
 } from "vscode-languageserver";
+import type { LanguageServerSettings } from "../build-server.js";
 
 export class TestClient {
   private client: Connection;

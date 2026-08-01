@@ -1,13 +1,13 @@
-import {
-  DidChangeWatchedFilesNotification,
-  DidChangeWatchedFilesParams,
-  Disposable,
-  NotificationHandler,
-  ServerCapabilities
-} from "vscode-languageserver";
+import { DidChangeWatchedFilesNotification, Disposable } from "vscode-languageserver";
 import { Server } from "./Server.ts";
 import { ReadFileRequest } from "../protocol/hyperjump-readFile.ts";
 import { FindFilesRequest } from "../protocol/hyperjump-findFiles.ts";
+
+import type {
+  DidChangeWatchedFilesParams,
+  NotificationHandler,
+  ServerCapabilities
+} from "vscode-languageserver";
 
 export class Workspace {
   private server: Server;
