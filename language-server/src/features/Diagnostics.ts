@@ -15,7 +15,7 @@ export class Diagnostics {
   private server: Server;
   private jsonDocuments: JsonDocuments;
   private providers: DiagnosticsProvider[];
-  private pendingSends: Map<string, { cancelled: boolean }> = new Map();
+  private pendingSends: Map<string, AbortController> = new Map();
 
   constructor(server: Server, jsonDocuments: JsonDocuments, workspace: Workspace, providers: DiagnosticsProvider[]) {
     this.server = server;
@@ -35,20 +35,17 @@ export class Diagnostics {
   }
 
   private async sendDiagnostics(document: JsonDocument) {
-    const previous = this.pendingSends.get(document.uri);
-    if (previous) {
-      previous.cancelled = true;
-    }
+    this.pendingSends.get(document.uri)?.abort();
 
-    const pending = { cancelled: false };
-    this.pendingSends.set(document.uri, pending);
+    const controller = new AbortController();
+    this.pendingSends.set(document.uri, controller);
 
     const diagnostics = [];
     for (const provider of this.providers) {
       diagnostics.push(...await provider.getDiagnostics(document));
     }
 
-    if (!pending.cancelled) {
+    if (!controller.signal.aborted) {
       this.pendingSends.delete(document.uri);
       await this.server.sendDiagnostics({
         uri: document.uri,
