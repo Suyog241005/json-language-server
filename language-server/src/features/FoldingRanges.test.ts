@@ -149,6 +149,28 @@ describe("FoldingRanges", () => {
     expect(result).toEqual([]);
   });
 
+  test("should not crash on an incomplete property with no value", async () => {
+    await client.writeDocument(
+      "test.json",
+      `{
+        "foo": "a",
+        "bar"
+      }`
+    );
+    const uri = await client.openDocument("test.json");
+
+    const result = await client.sendRequest(FoldingRangeRequest.type, {
+      textDocument: { uri }
+    });
+
+    expect(result).toEqual([
+      {
+        startLine: 0,
+        endLine: 2
+      }
+    ]);
+  });
+
   test("should return folding ranges for empty multi-line objects with empty lines", async () => {
     await client.writeDocument("test.json", `{
 

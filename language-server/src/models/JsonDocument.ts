@@ -186,7 +186,10 @@ export class JsonDocument implements TextDocument {
       }
     } else if (node.type === "object") {
       for (const propertyNode of node.children!) {
-        this.walkNodes(propertyNode.children![1], fn);
+        const valueNode = propertyNode.children?.[1];
+        if (valueNode) {
+          this.walkNodes(valueNode, fn);
+        }
       }
     }
   }
