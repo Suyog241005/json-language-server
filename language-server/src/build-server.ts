@@ -33,7 +33,7 @@ addMediaTypePlugin("application/json", {
 removeUriSchemePlugin("http");
 removeUriSchemePlugin("https");
 
-export const buildServer = (connection: Connection): Connection => {
+export const buildServer = (connection: Connection): Server => {
   const server = new Server(connection);
 
   const workspace = new Workspace(server);

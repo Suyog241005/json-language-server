@@ -9,8 +9,6 @@ describe("Schema Store Tests", () => {
 
   beforeEach(async () => {
     client = new TestClient();
-    await client.start();
-
     client.mockAgent
       .get("https://www.schemastore.org")
       .intercept({ method: "GET", path: "/api/json/catalog.json" })
@@ -49,6 +47,8 @@ describe("Schema Store Tests", () => {
           "Content-Type": "application/json"
         }
       });
+
+    await client.start();
   });
 
   afterEach(async () => {
