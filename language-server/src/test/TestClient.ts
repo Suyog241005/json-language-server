@@ -39,6 +39,7 @@ export class TestClient {
   private configurationChangeNotificationOptions: DidChangeConfigurationRegistrationOptions | null | undefined;
   private openDocuments: Set<string>;
   private workspaceFolder: Promise<string>;
+  private ready: Promise<void>;
 
   onRequest: Connection["onRequest"];
   sendRequest: Connection["sendRequest"];
@@ -66,6 +67,7 @@ export class TestClient {
 
     const server = buildServer(connection);
     server.listen();
+    this.ready = server.isInitialized;
 
     this.client = createConnection(down, up);
     this.onRequest = this.client.onRequest.bind(this.client);
@@ -191,9 +193,7 @@ export class TestClient {
     this._serverCapabilities = initializeResult.capabilities;
 
     await this.client.sendNotification(InitializedNotification.type, {});
-
-    // Wait for dynamic registrations to be completed
-    // await wait(100);
+    await this.ready;
 
     await this.changeConfiguration();
   }

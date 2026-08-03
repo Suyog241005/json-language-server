@@ -17,6 +17,7 @@ export class Server implements Connection {
   private connection: Connection;
   private initializeHandlers: Set<ServerRequestHandler<InitializeParams, InitializeResult, never, InitializeError>>;
   private initializedHandlers: Set<NotificationHandler<InitializedParams>>;
+  private _isInitialized: Promise<void>;
   private shutdownHandlers: Set<RequestHandler0<void, void>>;
   private exitHandlers: Set<NotificationHandler0>;
 
@@ -86,12 +87,19 @@ export class Server implements Connection {
     });
 
     this.initializedHandlers = new Set();
-    this.connection.onInitialized(async (params) => {
-      for (const handler of this.initializedHandlers) {
-        await handler(params);
-      }
+    this._isInitialized = new Promise<void>((resolve, reject) => {
+      this.connection.onInitialized(async (params) => {
+        try {
+          for (const handler of this.initializedHandlers) {
+            await handler(params);
+          }
 
-      connection.console.log("Ready");
+          connection.console.log("Ready");
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      });
     });
 
     this.shutdownHandlers = new Set();
@@ -172,6 +180,10 @@ export class Server implements Connection {
         this.initializedHandlers.delete(handler);
       }
     };
+  }
+
+  get isInitialized() {
+    return this._isInitialized;
   }
 
   onShutdown(handler: RequestHandler0<void, void>): Disposable {
