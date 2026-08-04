@@ -200,10 +200,10 @@ export class SchemaStore {
   }
 
   private async processWorkspaceSchemaFile(fileUri: string) {
-    const text = await this.workspace.readFile(fileUri);
-    const schema = jsonc.parse(text);
-
     try {
+      const text = await this.workspace.readFile(fileUri);
+      const schema = jsonc.parse(text);
+
       if (typeof schema?.["$schema"] === "string") {
         const dialectId = toAbsoluteIri(resolveIri(schema.$schema, fileUri));
         const idKeyword = getKeywordName(dialectId, "https://json-schema.org/keyword/id")
