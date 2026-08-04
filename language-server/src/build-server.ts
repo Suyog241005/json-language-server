@@ -6,8 +6,6 @@ import { Diagnostics } from "./features/Diagnostics.ts";
 import { SyntaxValidation } from "./features/SyntaxValidation.ts";
 import { SchemaValidation } from "./features/SchemaValidation.ts";
 import { Formatting } from "./features/Formatting.ts";
-import { addMediaTypePlugin, removeUriSchemePlugin } from "@hyperjump/browser";
-import { buildSchemaDocument } from "@hyperjump/json-schema/experimental";
 import { Hover } from "./features/Hover.ts";
 import { Completion } from "./features/Completion.ts";
 import { FoldingRanges } from "./features/FoldingRanges.ts";
@@ -22,16 +20,6 @@ import type { Connection } from "vscode-languageserver";
 
 export type LanguageServerSettings = {
 };
-
-addMediaTypePlugin("application/json", {
-  parse: async (response) => {
-    return buildSchemaDocument(await response.json(), response.url);
-  },
-  fileMatcher: async (path) => path.endsWith(".json")
-});
-
-removeUriSchemePlugin("http");
-removeUriSchemePlugin("https");
 
 export const buildServer = (connection: Connection): Server => {
   const server = new Server(connection);

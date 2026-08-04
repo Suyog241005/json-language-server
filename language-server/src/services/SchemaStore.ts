@@ -1,11 +1,8 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { compile, getSchema, getKeywordName } from "@hyperjump/json-schema/experimental";
+import { compile, getSchema, getKeywordName, buildSchemaDocument } from "@hyperjump/json-schema/experimental";
 import { registerSchema, unregisterSchema } from "@hyperjump/json-schema";
 import { evaluateCompiledSchema } from "@hyperjump/json-schema-errors";
-import { addUriSchemePlugin, httpSchemePlugin } from "@hyperjump/browser";
-import { normalizeIri, resolveIri, toAbsoluteIri } from "@hyperjump/uri";
+import { addMediaTypePlugin, addUriSchemePlugin, getFileMediaType, httpSchemePlugin } from "@hyperjump/browser";
+import { normalizeIri, parseIri, resolveIri, toAbsoluteIri, toRelativeIri } from "@hyperjump/uri";
 import * as jsonc from "jsonc-parser";
 import * as Pact from "@hyperjump/pact";
 import ignore from "ignore";
@@ -54,7 +51,11 @@ export class SchemaStore {
 
     this.scanCompleted = new Promise((resolve) => {
       server.onInitialized(async () => {
-        await this.scanWorkspace();
+        this.server.console.log("Scanning workspace for self-identifying schemas...");
+        for (const fileUri of await this.workspace.findFiles("**/*.{json,jsonc}")) {
+          await this.processWorkspaceSchemaFile(fileUri);
+        }
+        this.server.console.log("Scanning completed");
         resolve();
       });
     });
@@ -67,6 +68,13 @@ export class SchemaStore {
       );
     });
 
+    addMediaTypePlugin("application/json", {
+      parse: async (response) => {
+        return buildSchemaDocument(await response.json(), response.url);
+      },
+      fileMatcher: async (path) => path.endsWith(".json")
+    });
+
     const uriSchemePlugin: UriSchemePlugin = {
       async retrieve(uri: string) {
         if (!(await schemaAllowList).has(uri) && !uri.startsWith("https://json.schemastore.org")) {
@@ -76,9 +84,32 @@ export class SchemaStore {
         return httpSchemePlugin.retrieve(uri);
       }
     };
-
     addUriSchemePlugin("http", uriSchemePlugin);
     addUriSchemePlugin("https", uriSchemePlugin);
+
+    addUriSchemePlugin("file", {
+      async retrieve(uri, baseUri) {
+        if (baseUri) {
+          const { scheme } = parseIri(baseUri);
+
+          if (scheme !== "file") {
+            throw Error(`Accessing a file (${uri}) from a non-filesystem context (${baseUri}) is not allowed`);
+          }
+        }
+
+        let responseUri = toAbsoluteIri(uri);
+
+        const contentType = await getFileMediaType(responseUri);
+        const file = await workspace.readFile(uri);
+        const stream = new Blob([file]).stream();
+        const response = new Response(stream, {
+          headers: { "Content-Type": contentType }
+        });
+        Object.defineProperty(response, "url", { value: responseUri });
+
+        return response;
+      }
+    });
 
     workspace.onDidChangeWatchedFiles(async (params) => {
       for (const change of params.changes) {
@@ -92,22 +123,18 @@ export class SchemaStore {
   }
 
   async getSchemaUri(fileUri: string) {
-    const filePath = fileURLToPath(fileUri);
-
-    for (const schema of await this.catalog) {
-      const { fileMatch, url } = schema;
+    for (const { fileMatch, url } of await this.catalog) {
       if (!fileMatch) {
         continue;
       }
 
       const ig = ignore().add(fileMatch);
       for (const workspaceUri of this.workspace.workspaceFolders) {
-        const workspacePath = fileURLToPath(workspaceUri);
-        if (!filePath.startsWith(workspacePath)) {
+        if (!fileUri.startsWith(workspaceUri)) {
           continue;
         }
 
-        const relativePath = path.relative(workspacePath, filePath);
+        const relativePath = toRelativeIri(workspaceUri, fileUri);
         if (ig.ignores(relativePath)) {
           return url;
         }
@@ -172,36 +199,9 @@ export class SchemaStore {
     return dependentSchemas;
   }
 
-  private async scanWorkspace() {
-    this.server.console.log("Scanning workspace for self-identifying schemas...");
-    for (const folderUri of this.workspace.workspaceFolders) {
-      const dirPath = fileURLToPath(folderUri);
-
-      const ig = ignore();
-      try {
-        const gitignorePath = path.join(dirPath, ".gitignore");
-        const gitignoreContent = await fs.readFile(gitignorePath, "utf-8");
-        ig.add(gitignoreContent);
-      } catch {
-        // Ignore if .gitignore does not exist
-      }
-
-      for await (const entry of fs.glob("**/*.{json,jsonc}", { cwd: dirPath, exclude: [".git/"] })) {
-        if (ig.ignores(entry)) {
-          continue;
-        }
-        const fullPath = path.join(dirPath, entry);
-        const fileUri = pathToFileURL(fullPath).toString();
-        await this.processWorkspaceSchemaFile(fileUri);
-      }
-    }
-    this.server.console.log("Scanning completed");
-  }
-
   private async processWorkspaceSchemaFile(fileUri: string) {
-    const filePath = fileURLToPath(fileUri);
     try {
-      const text = await fs.readFile(filePath, "utf-8");
+      const text = await this.workspace.readFile(fileUri);
       const schema = jsonc.parse(text);
 
       if (typeof schema?.["$schema"] === "string") {
