@@ -54,12 +54,7 @@ export class DocumentSymbols {
         const kind = this.getSymbolKind(valueNode?.type);
         const children = valueNode ? this.collectDocumentSymbols(jsonDocument, valueNode) : [];
 
-        const symbol: DocumentSymbol = {
-          name,
-          kind,
-          range,
-          selectionRange
-        };
+        const symbol: DocumentSymbol = { name, kind, range, selectionRange };
 
         if (children.length > 0) {
           symbol.children = children;
@@ -79,12 +74,7 @@ export class DocumentSymbols {
         const kind = this.getSymbolKind(child.type);
         const children = this.collectDocumentSymbols(jsonDocument, child);
 
-        const symbol: DocumentSymbol = {
-          name,
-          kind,
-          range,
-          selectionRange
-        };
+        const symbol: DocumentSymbol = { name, kind, range, selectionRange };
 
         if (children.length > 0) {
           symbol.children = children;
@@ -114,7 +104,8 @@ export class DocumentSymbols {
       case "property":
         return SymbolKind.Property;
       default:
-        return SymbolKind.Property;
+        // Unreachable code, but typescript needs something to know the function doesn't return undefined
+        throw Error("Unreachable");
     }
   }
 }
