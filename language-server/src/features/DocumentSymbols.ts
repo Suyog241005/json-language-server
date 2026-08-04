@@ -23,66 +23,52 @@ export class DocumentSymbols {
     });
 
     server.onDocumentSymbol((params) => {
-      const jsonDocument = this.jsonDocuments.get(params.textDocument.uri);
-      if (!jsonDocument) {
+      const jsonDocument = this.jsonDocuments.get(params.textDocument.uri)!;
+      const ast = jsonDocument.findNodeAtPointer("");
+      if (!ast) {
         return [];
       }
 
-      return this.getDocumentSymbols(jsonDocument);
+      return this.collectDocumentSymbols(jsonDocument, ast);
     });
-  }
-
-  private getDocumentSymbols(jsonDocument: JsonDocument): DocumentSymbol[] {
-    const ast = jsonDocument.findNodeAtPointer("");
-    if (!ast) {
-      return [];
-    }
-
-    return this.collectDocumentSymbols(jsonDocument, ast);
   }
 
   private collectDocumentSymbols(jsonDocument: JsonDocument, node: Node): DocumentSymbol[] {
     const symbols: DocumentSymbol[] = [];
 
-    if (node.type === "object" && node.children) {
-      for (const child of node.children) {
-        if (child.type === "property" && child.children) {
-          const keyNode = child.children[0];
-          const valueNode = child.children[1];
+    if (node.type === "object") {
+      for (const propertyNode of node.children!) {
+        const keyNode = propertyNode.children![0];
+        const valueNode = propertyNode.children![1];
 
-          if (!keyNode) {
-            continue;
-          }
+        const name = String(keyNode.value);
+        const range = {
+          start: jsonDocument.positionAt(propertyNode.offset),
+          end: jsonDocument.positionAt(propertyNode.offset + propertyNode.length)
+        };
+        const selectionRange = {
+          start: jsonDocument.positionAt(keyNode.offset),
+          end: jsonDocument.positionAt(keyNode.offset + keyNode.length)
+        };
 
-          const name = String(keyNode.value);
-          const range = {
-            start: jsonDocument.positionAt(child.offset),
-            end: jsonDocument.positionAt(child.offset + child.length)
-          };
-          const selectionRange = {
-            start: jsonDocument.positionAt(keyNode.offset),
-            end: jsonDocument.positionAt(keyNode.offset + keyNode.length)
-          };
+        const kind = this.getSymbolKind(valueNode?.type);
+        const children = valueNode ? this.collectDocumentSymbols(jsonDocument, valueNode) : [];
 
-          const kind = this.getSymbolKind(valueNode?.type);
-          const children = valueNode ? this.collectDocumentSymbols(jsonDocument, valueNode) : [];
+        const symbol: DocumentSymbol = {
+          name,
+          kind,
+          range,
+          selectionRange
+        };
 
-          const symbol: DocumentSymbol = {
-            name,
-            kind,
-            range,
-            selectionRange
-          };
-
-          if (children.length > 0) {
-            symbol.children = children;
-          }
-
-          symbols.push(symbol);
+        if (children.length > 0) {
+          symbol.children = children;
         }
+
+        symbols.push(symbol);
       }
-    } else if (node.type === "array" && node.children) {
-      node.children.forEach((child, index) => {
+    } else if (node.type === "array") {
+      node.children!.forEach((child, index) => {
         const name = String(index);
         const range = {
           start: jsonDocument.positionAt(child.offset),
@@ -125,6 +111,8 @@ export class DocumentSymbols {
         return SymbolKind.Boolean;
       case "null":
         return SymbolKind.Null;
+      case "property":
+        return SymbolKind.Property;
       default:
         return SymbolKind.Property;
     }
