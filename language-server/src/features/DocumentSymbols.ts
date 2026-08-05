@@ -41,26 +41,40 @@ export class DocumentSymbols {
         const keyNode = propertyNode.children![0];
         const valueNode = propertyNode.children![1];
 
-        const name = String(keyNode.value);
-        const range = {
-          start: jsonDocument.positionAt(propertyNode.offset),
-          end: jsonDocument.positionAt(propertyNode.offset + propertyNode.length)
-        };
-        const selectionRange = {
+        const keyRange = {
           start: jsonDocument.positionAt(keyNode.offset),
           end: jsonDocument.positionAt(keyNode.offset + keyNode.length)
         };
+        const keySymbol: DocumentSymbol = {
+          name: String(keyNode.value),
+          kind: SymbolKind.Property,
+          range: keyRange,
+          selectionRange: keyRange
+        };
+        symbols.push(keySymbol);
 
-        const kind = this.getSymbolKind(valueNode?.type);
-        const children = valueNode ? this.collectDocumentSymbols(jsonDocument, valueNode) : [];
+        if (valueNode) {
+          const valueRange = {
+            start: jsonDocument.positionAt(valueNode.offset),
+            end: jsonDocument.positionAt(valueNode.offset + valueNode.length)
+          };
+          const valueName = valueNode.value !== undefined ? String(valueNode.value) : String(keyNode.value);
+          const kind = this.getSymbolKind(valueNode.type);
+          const children = this.collectDocumentSymbols(jsonDocument, valueNode);
 
-        const symbol: DocumentSymbol = { name, kind, range, selectionRange };
+          const valueSymbol: DocumentSymbol = {
+            name: valueName,
+            kind,
+            range: valueRange,
+            selectionRange: valueRange
+          };
 
-        if (children.length > 0) {
-          symbol.children = children;
+          if (children.length > 0) {
+            valueSymbol.children = children;
+          }
+
+          symbols.push(valueSymbol);
         }
-
-        symbols.push(symbol);
       }
     } else if (node.type === "array") {
       node.children!.forEach((child, index) => {

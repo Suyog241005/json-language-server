@@ -30,10 +30,10 @@ describe("DocumentSymbols", () => {
     expect(result).toEqual([
       {
         name: "name",
-        kind: SymbolKind.String,
+        kind: SymbolKind.Property,
         range: {
           start: { line: 1, character: 6 },
-          end: { line: 1, character: 21 }
+          end: { line: 1, character: 12 }
         },
         selectionRange: {
           start: { line: 1, character: 6 },
@@ -41,11 +41,23 @@ describe("DocumentSymbols", () => {
         }
       },
       {
+        name: "Alice",
+        kind: SymbolKind.String,
+        range: {
+          start: { line: 1, character: 14 },
+          end: { line: 1, character: 21 }
+        },
+        selectionRange: {
+          start: { line: 1, character: 14 },
+          end: { line: 1, character: 21 }
+        }
+      },
+      {
         name: "age",
-        kind: SymbolKind.Number,
+        kind: SymbolKind.Property,
         range: {
           start: { line: 2, character: 6 },
-          end: { line: 2, character: 15 }
+          end: { line: 2, character: 11 }
         },
         selectionRange: {
           start: { line: 2, character: 6 },
@@ -53,11 +65,23 @@ describe("DocumentSymbols", () => {
         }
       },
       {
+        name: "30",
+        kind: SymbolKind.Number,
+        range: {
+          start: { line: 2, character: 13 },
+          end: { line: 2, character: 15 }
+        },
+        selectionRange: {
+          start: { line: 2, character: 13 },
+          end: { line: 2, character: 15 }
+        }
+      },
+      {
         name: "active",
-        kind: SymbolKind.Boolean,
+        kind: SymbolKind.Property,
         range: {
           start: { line: 3, character: 6 },
-          end: { line: 3, character: 20 }
+          end: { line: 3, character: 14 }
         },
         selectionRange: {
           start: { line: 3, character: 6 },
@@ -65,15 +89,39 @@ describe("DocumentSymbols", () => {
         }
       },
       {
+        name: "true",
+        kind: SymbolKind.Boolean,
+        range: {
+          start: { line: 3, character: 16 },
+          end: { line: 3, character: 20 }
+        },
+        selectionRange: {
+          start: { line: 3, character: 16 },
+          end: { line: 3, character: 20 }
+        }
+      },
+      {
         name: "address",
-        kind: SymbolKind.Null,
+        kind: SymbolKind.Property,
         range: {
           start: { line: 4, character: 6 },
-          end: { line: 4, character: 21 }
+          end: { line: 4, character: 15 }
         },
         selectionRange: {
           start: { line: 4, character: 6 },
           end: { line: 4, character: 15 }
+        }
+      },
+      {
+        name: "null",
+        kind: SymbolKind.Null,
+        range: {
+          start: { line: 4, character: 17 },
+          end: { line: 4, character: 21 }
+        },
+        selectionRange: {
+          start: { line: 4, character: 17 },
+          end: { line: 4, character: 21 }
         }
       }
     ]);
@@ -94,26 +142,50 @@ describe("DocumentSymbols", () => {
     expect(result).toEqual([
       {
         name: "server",
-        kind: SymbolKind.Object,
+        kind: SymbolKind.Property,
         range: {
           start: { line: 1, character: 6 },
-          end: { line: 3, character: 7 }
+          end: { line: 1, character: 14 }
         },
         selectionRange: {
           start: { line: 1, character: 6 },
           end: { line: 1, character: 14 }
+        }
+      },
+      {
+        name: "server",
+        kind: SymbolKind.Object,
+        range: {
+          start: { line: 1, character: 16 },
+          end: { line: 3, character: 7 }
+        },
+        selectionRange: {
+          start: { line: 1, character: 16 },
+          end: { line: 3, character: 7 }
         },
         children: [
           {
             name: "port",
-            kind: SymbolKind.Number,
+            kind: SymbolKind.Property,
             range: {
               start: { line: 2, character: 8 },
-              end: { line: 2, character: 20 }
+              end: { line: 2, character: 14 }
             },
             selectionRange: {
               start: { line: 2, character: 8 },
               end: { line: 2, character: 14 }
+            }
+          },
+          {
+            name: "8080",
+            kind: SymbolKind.Number,
+            range: {
+              start: { line: 2, character: 16 },
+              end: { line: 2, character: 20 }
+            },
+            selectionRange: {
+              start: { line: 2, character: 16 },
+              end: { line: 2, character: 20 }
             }
           }
         ]
@@ -137,14 +209,26 @@ describe("DocumentSymbols", () => {
     expect(result).toEqual([
       {
         name: "plugins",
-        kind: SymbolKind.Array,
+        kind: SymbolKind.Property,
         range: {
           start: { line: 1, character: 6 },
-          end: { line: 4, character: 7 }
+          end: { line: 1, character: 15 }
         },
         selectionRange: {
           start: { line: 1, character: 6 },
           end: { line: 1, character: 15 }
+        }
+      },
+      {
+        name: "plugins",
+        kind: SymbolKind.Array,
+        range: {
+          start: { line: 1, character: 17 },
+          end: { line: 4, character: 7 }
+        },
+        selectionRange: {
+          start: { line: 1, character: 17 },
+          end: { line: 4, character: 7 }
         },
         children: [
           {
