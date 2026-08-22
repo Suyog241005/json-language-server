@@ -130,11 +130,11 @@ export class SchemaStore {
 
       const ig = ignore().add(fileMatch);
       for (const workspaceUri of this.workspace.workspaceFolders) {
-        if (!fileUri.startsWith(workspaceUri)) {
+        if (!fileUri.startsWith(workspaceUri + "/")) {
           continue;
         }
 
-        const relativePath = toRelativeIri(workspaceUri, fileUri);
+        const relativePath = toRelativeIri(workspaceUri + "/", fileUri);
         if (ig.ignores(relativePath)) {
           return url;
         }

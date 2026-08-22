@@ -60,7 +60,7 @@ export class TestClient {
     this.watchEnabled = false;
     this.openDocuments = new Set();
     this.workspaceFolder = mkdtemp(join(tmpdir(), "test-workspace-"))
-      .then((path) => normalizeIri(pathToFileURL(path) + "/"));
+      .then((path) => normalizeIri(pathToFileURL(path).toString()));
     this.gitignore = this.workspaceFolder.then(async (rootPath) => {
       const gitignorePath = join(rootPath, ".gitignore");
       try {
@@ -258,7 +258,7 @@ export class TestClient {
   }
 
   async writeDocument(uri: string, text: string) {
-    const fullUri = resolveIri(uri, await this.workspaceFolder);
+    const fullUri = resolveIri(uri, await this.workspaceFolder + "/");
     const fullPath = fileURLToPath(fullUri);
     const exists = await access(fullPath)
       .then(() => true)
@@ -280,7 +280,7 @@ export class TestClient {
   }
 
   async deleteDocument(uri: string) {
-    const fullUri = resolveIri(uri, await this.workspaceFolder);
+    const fullUri = resolveIri(uri, await this.workspaceFolder + "/");
     await rm(fileURLToPath(fullUri));
 
     if (this.watchEnabled) {
@@ -296,7 +296,7 @@ export class TestClient {
   }
 
   async openDocument(uri: string) {
-    const fullUri = resolveIri(uri, await this.workspaceFolder);
+    const fullUri = resolveIri(uri, await this.workspaceFolder + "/");
     const fullPath = fileURLToPath(fullUri);
 
     await this.client.sendNotification(DidOpenTextDocumentNotification.type, {
@@ -314,7 +314,7 @@ export class TestClient {
   }
 
   async changeDocument(uri: string, text: string) {
-    const fullUri = resolveIri(uri, await this.workspaceFolder);
+    const fullUri = resolveIri(uri, await this.workspaceFolder + "/");
 
     await this.client.sendNotification(DidChangeTextDocumentNotification.type, {
       textDocument: {
@@ -328,11 +328,12 @@ export class TestClient {
   }
 
   async closeDocument(uri: string) {
-    this.openDocuments.delete(uri);
+    const fullUri = resolveIri(uri, await this.workspaceFolder + "/");
+    this.openDocuments.delete(fullUri);
 
     await this.client.sendNotification(DidCloseTextDocumentNotification.type, {
       textDocument: {
-        uri: uri
+        uri: fullUri
       }
     });
   }
