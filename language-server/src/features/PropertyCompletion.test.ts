@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { CompletionRequest, CompletionItemKind, PublishDiagnosticsNotification } from "vscode-languageserver";
 import { TestClient } from "../test/TestClient.ts";
 
-describe("Completions", () => {
+describe("Property completions", () => {
   let client: TestClient;
   let fixtureSchemaUri: string;
 

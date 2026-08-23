@@ -1,5 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { CompletionRequest, CompletionItemKind, PublishDiagnosticsNotification, InsertTextFormat } from "vscode-languageserver";
+import {
+  CompletionRequest,
+  CompletionItemKind,
+  PublishDiagnosticsNotification,
+  InsertTextFormat
+} from "vscode-languageserver";
 import { TestClient } from "../test/TestClient.ts";
 
 describe("Completions", () => {

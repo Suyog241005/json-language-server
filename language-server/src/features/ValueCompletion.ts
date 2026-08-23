@@ -1,8 +1,9 @@
-import { CompletionItemKind, InsertTextFormat } from "vscode-languageserver";
+import { CompletionItemKind, InsertTextFormat, Range } from "vscode-languageserver";
 
 import type { CompletionItem, Position } from "vscode-languageserver";
 import type { JsonDocument } from "../models/JsonDocument.ts";
 import type { CompletionsProvider } from "./Completion.ts";
+import type { PropertyValueInfo } from "../services/CompletionEvaluationPlugin.ts";
 
 export class ValueCompletion implements CompletionsProvider {
   async getCompletions(jsonDocument: JsonDocument, position: Position): Promise<CompletionItem[]> {
@@ -55,7 +56,7 @@ export class ValueCompletion implements CompletionsProvider {
     return completionItems;
   }
 
-  private genericTypeCompletions(valueInfo: { type?: string | string[]; excluded?: unknown[] }, range: { start: Position; end: Position }): CompletionItem[] {
+  private genericTypeCompletions(valueInfo: PropertyValueInfo, range: Range): CompletionItem[] {
     const types = new Set(Array.isArray(valueInfo.type) ? valueInfo.type : valueInfo.type ? [valueInfo.type] : ["string", "number", "boolean", "null", "object", "array", "integer"]);
     const excluded = new Set((valueInfo.excluded ?? []).map((value) => JSON.stringify(value)));
 
