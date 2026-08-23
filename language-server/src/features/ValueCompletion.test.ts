@@ -202,6 +202,67 @@ describe("Completions", () => {
     ]);
   });
 
+  test("Value completion : completion should return multiple options for type array", async () => {
+    const diagnostics: Promise<void> = new Promise((resolve) => {
+      client.onNotification(PublishDiagnosticsNotification.type, () => {
+        resolve();
+      });
+    });
+
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "test": { "type": ["string", "boolean"] }
+      }
+    }`);
+
+    const instanceText = `{
+      "$schema": "${fixtureSchemaUri}",
+      "test":
+    }`;
+
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    await diagnostics;
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 13 }
+    });
+
+    expect(completions).toEqual([
+      {
+        label: `""`,
+        kind: CompletionItemKind.Value,
+        insertTextFormat: InsertTextFormat.Snippet,
+        textEdit: {
+          range: { start: { line: 2, character: 13 }, end: { line: 2, character: 13 } },
+          newText: ` "$1"`
+        }
+      },
+      {
+        label: "true",
+        kind: CompletionItemKind.Value,
+        insertTextFormat: InsertTextFormat.Snippet,
+        textEdit: {
+          range: { start: { line: 2, character: 13 }, end: { line: 2, character: 13 } },
+          newText: " true"
+        }
+      },
+      {
+        label: "false",
+        kind: CompletionItemKind.Value,
+        insertTextFormat: InsertTextFormat.Snippet,
+        textEdit: {
+          range: { start: { line: 2, character: 13 }, end: { line: 2, character: 13 } },
+          newText: " false"
+        }
+      }
+    ]);
+  });
+
   test("Value completion: selecting a property with const shows that const value", async () => {
     const diagnostics: Promise<void> = new Promise((resolve) => {
       client.onNotification(PublishDiagnosticsNotification.type, () => {
@@ -354,6 +415,58 @@ describe("Completions", () => {
         textEdit: {
           range: { start: { line: 2, character: 14 }, end: { line: 2, character: 15 } },
           newText: ` "red"`
+        }
+      }
+    ]);
+  });
+
+  test("allOf : value completion suggests common non-scalar enum info from both allOf branch", async () => {
+    const diagnostics: Promise<void> = new Promise((resolve) => {
+      client.onNotification(PublishDiagnosticsNotification.type, () => {
+        resolve();
+      });
+    });
+
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "allOf": [
+        {
+          "properties": {
+            "foo": { "enum": [{ "a": 1, "b": 2 }] }
+          }
+        },
+        {
+          "properties": {
+            "foo": { "enum": [{ "b": 2, "a": 1 }] }
+          }
+        }
+      ]
+    }`);
+
+    const instanceText = `{
+      "$schema": "${fixtureSchemaUri}",
+      "foo": 
+    }`;
+
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    await diagnostics;
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 15 }
+    });
+
+    expect(completions).toEqual([
+      {
+        label: `{"a":1,"b":2}`,
+        kind: CompletionItemKind.EnumMember,
+        insertTextFormat: InsertTextFormat.Snippet,
+        textEdit: {
+          range: { start: { line: 2, character: 12 }, end: { line: 2, character: 15 } },
+          newText: ` {"a":1,"b":2}`
         }
       }
     ]);
@@ -547,6 +660,58 @@ describe("Completions", () => {
     expect(completions).toEqual([]);
   });
 
+  test("allOf: value completion suggests integer for branches with integer and number types", async () => {
+    const diagnostics: Promise<void> = new Promise((resolve) => {
+      client.onNotification(PublishDiagnosticsNotification.type, () => {
+        resolve();
+      });
+    });
+
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "allOf": [
+        {
+          "properties": {
+            "name": { "type": "number" }
+          }
+        },
+        {
+          "properties": {
+            "name": { "type": "integer" }
+          }
+        }
+      ]
+    }`);
+
+    const instanceText = `{
+      "$schema": "${fixtureSchemaUri}",
+      "name":
+    }`;
+
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    await diagnostics;
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 14 }
+    });
+
+    expect(completions).toEqual([
+      {
+        label: "integer",
+        kind: CompletionItemKind.Value,
+        insertTextFormat: InsertTextFormat.Snippet,
+        textEdit: {
+          range: { start: { line: 2, character: 13 }, end: { line: 2, character: 14 } },
+          newText: ` $0`
+        }
+      }
+    ]);
+  });
+
   test("allOf: an 'allOf' nested inside allOf branch, processes its own branches then intersects with allOf", async () => {
     const diagnostics: Promise<void> = new Promise((resolve) => {
       client.onNotification(PublishDiagnosticsNotification.type, () => {
@@ -598,7 +763,7 @@ describe("Completions", () => {
     expect(completions).toEqual([]);
   });
 
-  test("allOf: an 'anyOf' nested inside allOf branch, processes its own branches then intersects with allOf", async () => {
+  test("allOf: an 'anyOf' nested inside an allOf branch, processes its own branches then intersects with allOf", async () => {
     const diagnostics: Promise<void> = new Promise((resolve) => {
       client.onNotification(PublishDiagnosticsNotification.type, () => {
         resolve();
@@ -668,7 +833,7 @@ describe("Completions", () => {
     ]);
   });
 
-  test("allOf: an 'oneOf' nested inside allOf branch, processes its own branches then intersects with allOf", async () => {
+  test("allOf: a 'oneOf' nested inside an allOf branch, processes its own branches then intersects with allOf", async () => {
     const diagnostics: Promise<void> = new Promise((resolve) => {
       client.onNotification(PublishDiagnosticsNotification.type, () => {
         resolve();
@@ -1704,6 +1869,98 @@ describe("Completions", () => {
         textEdit: {
           range: { start: { line: 2, character: 24 }, end: { line: 2, character: 25 } },
           newText: " false"
+        }
+      }
+    ]);
+  });
+
+  test("not: excludes a type from property's completions", async () => {
+    const diagnostics: Promise<void> = new Promise((resolve) => {
+      client.onNotification(PublishDiagnosticsNotification.type, () => {
+        resolve();
+      });
+    });
+
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "allowConnection": {
+          "enum": ["foo", 42],
+          "not": { "type": "string" }
+        }
+      }
+    }`);
+
+    const instanceText = `{
+      "$schema": "${fixtureSchemaUri}",
+      "allowConnection": 
+    }`;
+
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    await diagnostics;
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 25 }
+    });
+
+    expect(completions).toEqual([
+      {
+        label: "42",
+        kind: CompletionItemKind.Value,
+        insertTextFormat: InsertTextFormat.Snippet,
+        textEdit: {
+          range: { start: { line: 2, character: 24 }, end: { line: 2, character: 25 } },
+          newText: " 42"
+        }
+      }
+    ]);
+  });
+
+  test("not: exclude multiple types from property's completions", async () => {
+    const diagnostics: Promise<void> = new Promise((resolve) => {
+      client.onNotification(PublishDiagnosticsNotification.type, () => {
+        resolve();
+      });
+    });
+
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "allowConnection": {
+          "enum": ["foo", 42, true],
+          "not": { "type": ["string", "boolean"] }
+        }
+      }
+    }`);
+
+    const instanceText = `{
+      "$schema": "${fixtureSchemaUri}",
+      "allowConnection": 
+    }`;
+
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    await diagnostics;
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 25 }
+    });
+
+    expect(completions).toEqual([
+      {
+        label: "42",
+        kind: CompletionItemKind.Value,
+        insertTextFormat: InsertTextFormat.Snippet,
+        textEdit: {
+          range: { start: { line: 2, character: 24 }, end: { line: 2, character: 25 } },
+          newText: " 42"
         }
       }
     ]);
