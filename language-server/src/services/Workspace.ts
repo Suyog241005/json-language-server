@@ -1,4 +1,5 @@
 import { DidChangeWatchedFilesNotification, Disposable } from "vscode-languageserver";
+import { normalizeIri } from "@hyperjump/uri";
 import { Server } from "./Server.ts";
 import { ReadFileRequest } from "../protocol/hyperjump-readFile.ts";
 import { FindFilesRequest } from "../protocol/hyperjump-findFiles.ts";
@@ -25,7 +26,7 @@ export class Workspace {
     server.onInitialize(({ capabilities, workspaceFolders }) => {
       if (workspaceFolders) {
         for (const workspaceFolder of workspaceFolders) {
-          this.workspaceFolders.add(workspaceFolder.uri);
+          this.workspaceFolders.add(normalizeIri(workspaceFolder.uri));
         }
       }
 
@@ -58,11 +59,11 @@ export class Workspace {
       if (hasWorkspaceFolderCapability) {
         server.workspace.onDidChangeWorkspaceFolders(({ added, removed }) => {
           for (const workspaceFolder of added) {
-            this.workspaceFolders.add(workspaceFolder.uri);
+            this.workspaceFolders.add(normalizeIri(workspaceFolder.uri));
           }
 
           for (const workspaceFolder of removed) {
-            this.workspaceFolders.delete(workspaceFolder.uri);
+            this.workspaceFolders.delete(normalizeIri(workspaceFolder.uri));
           }
         });
       }

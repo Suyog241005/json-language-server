@@ -32,7 +32,7 @@ describe("DocumentLinks", () => {
     expect(result).toEqual([
       {
         target: schemaUri,
-        tooltip: "Click to open schema file",
+        tooltip: "Goto Schema",
         range: {
           start: { line: 1, character: 18 },
           end: { line: 1, character: 31 }

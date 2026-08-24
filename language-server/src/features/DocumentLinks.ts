@@ -1,4 +1,4 @@
-import { normalizeIri, resolveIri } from "@hyperjump/uri";
+import * as Pact from "@hyperjump/pact";
 
 import type { DocumentLink, ServerCapabilities } from "vscode-languageserver";
 import type { Server } from "../services/Server.ts";
@@ -23,7 +23,7 @@ export class DocumentLinks {
       };
     });
 
-    server.onDocumentLinks((params) => {
+    server.onDocumentLinks(async (params) => {
       const jsonDocument = this.jsonDocuments.get(params.textDocument.uri)!;
 
       const schemaNode = jsonDocument.findNodeAtPointer("/$schema");
@@ -31,25 +31,19 @@ export class DocumentLinks {
         return [];
       }
 
-      let schemaUri: string;
-      try {
-        schemaUri = resolveIri(schemaNode.value as string, jsonDocument.uri);
-      } catch {
+      const schemaUri = await jsonDocument.getSchemaUri();
+      if (!schemaUri) {
         return [];
       }
 
-      const isWorkspaceSchema = [...this.workspace.workspaceFolders].some((workspaceFolderUri) => {
-        const normalized = normalizeIri(workspaceFolderUri);
-        const prefix = normalized.endsWith("/") ? normalized : `${normalized}/`;
-        return schemaUri.startsWith(prefix);
-      });
+      const isWorkspaceSchema = Pact.some((workspaceFolderUri) => schemaUri.startsWith(`${workspaceFolderUri}/`), this.workspace.workspaceFolders);
       if (!isWorkspaceSchema) {
         return [];
       }
 
       const link: DocumentLink = {
         target: schemaUri,
-        tooltip: "Click to open schema file",
+        tooltip: "Goto Schema",
         range: {
           start: jsonDocument.positionAt(schemaNode.offset + 1),
           end: jsonDocument.positionAt(schemaNode.offset + schemaNode.length - 1)
