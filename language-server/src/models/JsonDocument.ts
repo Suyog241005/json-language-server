@@ -125,6 +125,10 @@ export class JsonDocument implements TextDocument {
     return this.schemaErrors;
   }
 
+  getSchemaUri() {
+    return this.schemaUri;
+  }
+
   findNodeAtPointer(pointer: string) {
     let node = this.ast;
 
