@@ -29,3 +29,4 @@ jobs:
     - run: cd vscode && npm run type-check
     - run: cd vscode && npm run lint
     - run: cd vscode && npm run build
+    - run: cd vscode && npm run package
