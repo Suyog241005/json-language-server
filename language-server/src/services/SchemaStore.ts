@@ -49,7 +49,7 @@ export class SchemaStore {
       });
     });
 
-    this.scanCompleted = new Promise((resolve) => {
+    this.scanCompleted = new Promise<void>((resolve) => {
       server.onInitialized(async () => {
         this.server.console.log("Scanning workspace for self-identifying schemas...");
         for (const fileUri of await this.workspace.findFiles("**/*.{json,jsonc}")) {
@@ -58,7 +58,7 @@ export class SchemaStore {
         this.server.console.log("Scanning completed");
         resolve();
       });
-    });
+    }).catch(() => {});
 
     const schemaAllowList = this.catalog.then((catalog) => {
       return Pact.pipe(
@@ -112,13 +112,19 @@ export class SchemaStore {
     });
 
     workspace.onDidChangeWatchedFiles(async (params) => {
-      for (const change of params.changes) {
-        const changedSchemaUri = normalizeIri(change.uri);
-        await this.clear(changedSchemaUri);
-        if (change.type !== FileChangeType.Deleted) {
-          await this.processWorkspaceSchemaFile(changedSchemaUri);
-        }
-      }
+      this.scanCompleted = this.scanCompleted
+        .then(async () => {
+          for (const change of params.changes) {
+            const changedSchemaUri = normalizeIri(change.uri);
+            await this.clear(changedSchemaUri);
+            if (change.type !== FileChangeType.Deleted) {
+              await this.processWorkspaceSchemaFile(changedSchemaUri);
+            }
+          }
+        })
+        .catch(() => { });
+
+      await this.scanCompleted;
     });
   }
 
