@@ -45,7 +45,8 @@ export class DocumentSymbols {
           continue;
         }
 
-        const name = String(keyNode.value);
+        const name = JSON.stringify(keyNode.value);
+
         const range = {
           start: jsonDocument.positionAt(propertyNode.offset),
           end: jsonDocument.positionAt(propertyNode.offset + propertyNode.length)
