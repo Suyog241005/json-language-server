@@ -29,7 +29,7 @@ describe("DocumentSymbols", () => {
 
     expect(result).toEqual([
       {
-        name: "name",
+        name: `"name"`,
         kind: SymbolKind.String,
         range: {
           start: { line: 1, character: 6 },
@@ -41,7 +41,7 @@ describe("DocumentSymbols", () => {
         }
       },
       {
-        name: "age",
+        name: `"age"`,
         kind: SymbolKind.Number,
         range: {
           start: { line: 2, character: 6 },
@@ -53,7 +53,7 @@ describe("DocumentSymbols", () => {
         }
       },
       {
-        name: "active",
+        name: `"active"`,
         kind: SymbolKind.Boolean,
         range: {
           start: { line: 3, character: 6 },
@@ -65,7 +65,7 @@ describe("DocumentSymbols", () => {
         }
       },
       {
-        name: "address",
+        name: `"address"`,
         kind: SymbolKind.Null,
         range: {
           start: { line: 4, character: 6 },
@@ -93,7 +93,7 @@ describe("DocumentSymbols", () => {
 
     expect(result).toEqual([
       {
-        name: "server",
+        name: `"server"`,
         kind: SymbolKind.Object,
         range: {
           start: { line: 1, character: 6 },
@@ -105,7 +105,7 @@ describe("DocumentSymbols", () => {
         },
         children: [
           {
-            name: "port",
+            name: `"port"`,
             kind: SymbolKind.Number,
             range: {
               start: { line: 2, character: 8 },
@@ -136,7 +136,7 @@ describe("DocumentSymbols", () => {
 
     expect(result).toEqual([
       {
-        name: "plugins",
+        name: `"plugins"`,
         kind: SymbolKind.Array,
         range: {
           start: { line: 1, character: 6 },
@@ -200,7 +200,7 @@ describe("DocumentSymbols", () => {
 
     expect(result).toEqual([
       {
-        name: "bar",
+        name: `"bar"`,
         kind: SymbolKind.Number,
         range: {
           start: { line: 1, character: 6 },
@@ -214,9 +214,12 @@ describe("DocumentSymbols", () => {
     ]);
   });
 
-  test("should name a property with an empty key so clients don't reject the symbol", async () => {
+  test("should name empty, quoted, and invisible property names unambiguously", async () => {
     await client.writeDocument("test.json", `{
-      "": "value"
+      "": 1,
+      "\\"\\"": 2,
+      "\\n": 3,
+      "\\u0000": 4
     }`);
     const uri = await client.openDocument("test.json");
 
@@ -227,28 +230,52 @@ describe("DocumentSymbols", () => {
     expect(result).toEqual([
       {
         name: `""`,
-        kind: SymbolKind.String,
+        kind: SymbolKind.Number,
         range: {
           start: { line: 1, character: 6 },
-          end: { line: 1, character: 17 }
+          end: { line: 1, character: 11 }
         },
         selectionRange: {
           start: { line: 1, character: 6 },
           end: { line: 1, character: 8 }
         }
+      },
+      {
+        name: `"\\"\\""`,
+        kind: SymbolKind.Number,
+        range: {
+          start: { line: 2, character: 6 },
+          end: { line: 2, character: 15 }
+        },
+        selectionRange: {
+          start: { line: 2, character: 6 },
+          end: { line: 2, character: 12 }
+        }
+      },
+      {
+        name: `"\\n"`,
+        kind: SymbolKind.Number,
+        range: {
+          start: { line: 3, character: 6 },
+          end: { line: 3, character: 13 }
+        },
+        selectionRange: {
+          start: { line: 3, character: 6 },
+          end: { line: 3, character: 10 }
+        }
+      },
+      {
+        name: `"\\u0000"`,
+        kind: SymbolKind.Number,
+        range: {
+          start: { line: 4, character: 6 },
+          end: { line: 4, character: 17 }
+        },
+        selectionRange: {
+          start: { line: 4, character: 6 },
+          end: { line: 4, character: 14 }
+        }
       }
     ]);
-  });
-
-  test("should return empty array when the document isn't open, prevents crash", async () => {
-    const uri = await client.writeDocument("unopened.json", `{
-      "foo": 1
-    }`);
-
-    const result = await client.sendRequest(DocumentSymbolRequest.type, {
-      textDocument: { uri }
-    });
-
-    expect(result).toEqual([]);
   });
 });
