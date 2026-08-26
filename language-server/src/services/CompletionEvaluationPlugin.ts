@@ -326,11 +326,22 @@ const resolveValueInfo = (ast: Record<string, unknown> | undefined, schemaUri: s
     }
 
     if (info.type) {
-      const allowedTypes = new Set(Array.isArray(info.type) ? info.type : [info.type]);
+      const allowedTypes = info.type;
       if (info.enum) {
-        info.enum = info.enum.filter((value) => allowedTypes.has(jsonTypeOf(value)));
+        info.enum = info.enum.filter((value) => isAnyType(value, allowedTypes));
       }
-      if (info.hasConst && !allowedTypes.has(jsonTypeOf(info.const))) {
+      if (info.hasConst && !isAnyType(info.const, allowedTypes)) {
+        info.hasConst = false;
+        info.const = undefined;
+      }
+    }
+
+    if (info.excludedTypes) {
+      const excludedTypes = info.excludedTypes;
+      if (info.enum) {
+        info.enum = info.enum.filter((value) => !isAnyType(value, excludedTypes));
+      }
+      if (info.hasConst && isAnyType(info.const, excludedTypes)) {
         info.hasConst = false;
         info.const = undefined;
       }
@@ -405,7 +416,7 @@ const intersectValueInfo = (a: PropertyValueInfo, b: PropertyValueInfo): Propert
   }
 
   let type = a.type !== undefined && b.type !== undefined
-    ? (JSON.stringify(a.type) === JSON.stringify(b.type) ? a.type : [])
+    ? intersectTypes(a.type, b.type)
     : a.type ?? b.type;
 
   if (excludedTypes && type) {
@@ -428,8 +439,19 @@ const intersectValueInfo = (a: PropertyValueInfo, b: PropertyValueInfo): Propert
   let constValue = bothHaveConst ? (constsMatch ? a.const : undefined) : (a.hasConst ? a.const : b.const);
 
   if (enumValues && type) {
-    const allowedTypes = new Set(Array.isArray(type) ? type : [type]);
-    enumValues = enumValues.filter((value) => allowedTypes.has(jsonTypeOf(value)));
+    const allowedTypes = type;
+    enumValues = enumValues.filter((value) => isAnyType(value, allowedTypes));
+  }
+
+  if (excludedTypes) {
+    const rejectedTypes = excludedTypes;
+    if (enumValues) {
+      enumValues = enumValues.filter((value) => !isAnyType(value, rejectedTypes));
+    }
+    if (hasConst && isAnyType(constValue, rejectedTypes)) {
+      hasConst = false;
+      constValue = undefined;
+    }
   }
 
   let excluded: unknown[] | undefined;
@@ -469,6 +491,35 @@ const intersectValueInfo = (a: PropertyValueInfo, b: PropertyValueInfo): Propert
 
 const isOpen = (info: PropertyValueInfo): boolean => {
   return info.permitsAnyValue === true || (!info.hasConst && !info.enum);
+};
+
+const typeList = (type: string | string[]): string[] => {
+  return Array.isArray(type) ? type : [type];
+};
+
+const intersectTypes = (a: string | string[], b: string | string[]): string[] => {
+  const bTypes = new Set(typeList(b));
+
+  const types = new Set<string>();
+  for (const type of typeList(a)) {
+    if (bTypes.has(type)) {
+      types.add(type);
+    } else if ((type === "number" && bTypes.has("integer")) || (type === "integer" && bTypes.has("number"))) {
+      types.add("integer");
+    }
+  }
+
+  return [...types];
+};
+
+const isType = (value: unknown, type: string): boolean => {
+  return type === "integer"
+    ? typeof value === "number" && Number.isInteger(value)
+    : jsonTypeOf(value) === type;
+};
+
+const isAnyType = (value: unknown, types: string | string[]): boolean => {
+  return typeList(types).some((type) => isType(value, type));
 };
 
 const exactlyOneValueInfo = (infos: PropertyValueInfo[]): PropertyValueInfo => {

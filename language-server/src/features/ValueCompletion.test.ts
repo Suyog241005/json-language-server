@@ -1910,7 +1910,7 @@ describe("Completions", () => {
     expect(completions).toEqual([
       {
         label: "42",
-        kind: CompletionItemKind.Value,
+        kind: CompletionItemKind.EnumMember,
         insertTextFormat: InsertTextFormat.Snippet,
         textEdit: {
           range: { start: { line: 2, character: 24 }, end: { line: 2, character: 25 } },
@@ -1956,7 +1956,7 @@ describe("Completions", () => {
     expect(completions).toEqual([
       {
         label: "42",
-        kind: CompletionItemKind.Value,
+        kind: CompletionItemKind.EnumMember,
         insertTextFormat: InsertTextFormat.Snippet,
         textEdit: {
           range: { start: { line: 2, character: 24 }, end: { line: 2, character: 25 } },
