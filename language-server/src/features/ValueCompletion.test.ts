@@ -2657,6 +2657,64 @@ describe("Completions", () => {
     ]);
   });
 
+  test("if: an 'if' condition must not narrow a real property's (color in this case) value completions", async () => {
+    const diagnostics: Promise<void> = new Promise((resolve) => {
+      client.onNotification(PublishDiagnosticsNotification.type, () => {
+        resolve();
+      });
+    });
+
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "color": { "enum": ["red", "blue"] }
+      },
+      "if": {
+        "properties": { "color": { "const": "red" } }
+      },
+      "then": {
+        "properties": { "font": { "const": "bold" } }
+      }
+    }`);
+
+    const instanceText = `{
+      "$schema": "${fixtureSchemaUri}",
+      "color":
+    }`;
+
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    await diagnostics;
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 16 }
+    });
+
+    expect(completions).toEqual([
+      {
+        label: `"red"`,
+        kind: CompletionItemKind.EnumMember,
+        insertTextFormat: InsertTextFormat.Snippet,
+        textEdit: {
+          range: { start: { line: 2, character: 14 }, end: { line: 2, character: 16 } },
+          newText: ` "red"`
+        }
+      },
+      {
+        label: `"blue"`,
+        kind: CompletionItemKind.EnumMember,
+        insertTextFormat: InsertTextFormat.Snippet,
+        textEdit: {
+          range: { start: { line: 2, character: 14 }, end: { line: 2, character: 16 } },
+          newText: ` "blue"`
+        }
+      }
+    ]);
+  });
+
   // combinators inside the property's own schema, rather than at the root level
   test("anyOf: an unconstrained branch in one variant offers its value plus every basic type", async () => {
     const diagnostics: Promise<void> = new Promise((resolve) => {

@@ -38,13 +38,11 @@ type Alternative = {
 };
 
 export class CompletionEvaluationPlugin implements EvaluationPlugin {
-  private alternatives: Map<string, Alternative[]> = new Map();
-  private acceptedProperties: Map<string, Set<string>> = new Map();
-  private forbiddenProperties: Map<string, Set<string>> = new Map();
-
-  private allOfCheckpoints: Map<string, number[]> = new Map();
+  private alternatives = new Map<string, Alternative[]>();
+  private acceptedProperties = new Map<string, Set<string>>();
+  private forbiddenProperties = new Map<string, Set<string>>();
+  private allOfCheckpoints = new Map<string, number[]>();
   private nextGroupId = 0;
-
   private ast?: Record<string, unknown>;
 
   beforeSchema(_url: string, _instance: JsonNode, context: CompletionContext): void {
@@ -58,22 +56,15 @@ export class CompletionEvaluationPlugin implements EvaluationPlugin {
     const [keywordId] = node;
     const negated = schemaContext.negated ?? false;
     context.negated = keywordId === "https://json-schema.org/keyword/not" ? !negated : negated;
-
-    const anyOf = schemaContext.isAnyOf ?? false;
-    context.isAnyOf = keywordId === "https://json-schema.org/keyword/anyOf" ? true : anyOf;
-
-    const oneOf = schemaContext.isOneOf ?? false;
-    context.isOneOf = keywordId === "https://json-schema.org/keyword/oneOf" ? true : oneOf;
-
+    context.isAnyOf = keywordId === "https://json-schema.org/keyword/anyOf" ? true : (schemaContext.isAnyOf ?? false);
+    context.isOneOf = keywordId === "https://json-schema.org/keyword/oneOf" ? true : (schemaContext.isOneOf ?? false);
     context.inIfCondition = keywordId === "https://json-schema.org/keyword/if" ? true : (schemaContext.inIfCondition ?? false);
 
     const isCombinator = keywordId === "https://json-schema.org/keyword/allOf" || keywordId === "https://json-schema.org/keyword/anyOf" || keywordId === "https://json-schema.org/keyword/oneOf";
     context.groupId = isCombinator ? this.nextGroupId++ : schemaContext.groupId;
 
     if (keywordId === "https://json-schema.org/keyword/allOf") {
-      const checkpoints = this.allOfCheckpoints.get(instance.pointer) ?? [];
-      checkpoints.push((this.alternatives.get(instance.pointer) ?? []).length);
-      this.allOfCheckpoints.set(instance.pointer, checkpoints);
+      getOrCreate(this.allOfCheckpoints, instance.pointer, () => []).push((this.alternatives.get(instance.pointer) ?? []).length);
     }
   }
 
@@ -81,60 +72,47 @@ export class CompletionEvaluationPlugin implements EvaluationPlugin {
     const [keywordId, , keywordValue] = node;
 
     if (keywordId === "https://json-schema.org/keyword/required" && schemaContext.negated && instance.type === "object") {
-      const required = keywordValue as string[];
-      const missing = required.filter((propertyName) => !Instance.has(propertyName, instance));
-
+      const missing = (keywordValue as string[]).filter((name) => !Instance.has(name, instance));
       if (missing.length === 1) {
-        const forbiddenProperties = this.forbiddenProperties.get(instance.pointer) ?? new Set();
-        forbiddenProperties.add(missing[0]);
-        this.forbiddenProperties.set(instance.pointer, forbiddenProperties);
+        getOrCreate(this.forbiddenProperties, instance.pointer, () => new Set()).add(missing[0]);
       }
     }
 
     if (keywordId === "https://json-schema.org/keyword/properties") {
       schemaContext.declaredProperties ??= new Map();
-      for (const [propertyName, schemaUri] of Object.entries(keywordValue as Record<string, string>)) {
-        if (!schemaContext.declaredProperties.has(propertyName)) {
-          schemaContext.declaredProperties.set(propertyName, resolveValueInfo(this.ast, schemaUri));
+      for (const [name, schemaUri] of Object.entries(keywordValue as Record<string, string>)) {
+        if (!schemaContext.declaredProperties.has(name)) {
+          schemaContext.declaredProperties.set(name, resolveValueInfo(this.ast, schemaUri));
         }
       }
     }
 
     if (keywordId === "https://json-schema.org/keyword/required") {
       schemaContext.declaredProperties ??= new Map();
-      for (const propertyName of keywordValue as string[]) {
-        if (!schemaContext.declaredProperties.has(propertyName)) {
-          schemaContext.declaredProperties.set(propertyName, { hasConst: false });
+      for (const name of keywordValue as string[]) {
+        if (!schemaContext.declaredProperties.has(name)) {
+          schemaContext.declaredProperties.set(name, { hasConst: false });
         }
       }
     }
 
     if (keywordId === "https://json-schema.org/keyword/additionalProperties") {
-      const [, schemaUri] = keywordValue as [unknown, string];
-      schemaContext.additionalPropertiesInfo = resolveValueInfo(this.ast, schemaUri);
+      schemaContext.additionalPropertiesInfo = resolveValueInfo(this.ast, (keywordValue as [unknown, string])[1]);
     }
 
     if (keywordId === "https://json-schema.org/keyword/properties" || keywordId === "https://json-schema.org/keyword/additionalProperties" || keywordId === "https://json-schema.org/keyword/patternProperties") {
-      if (!this.acceptedProperties.has(instance.pointer)) {
-        this.acceptedProperties.set(instance.pointer, new Set());
-      }
-      addAll(this.acceptedProperties.get(instance.pointer)!, context.passedProperties);
-
+      addAll(getOrCreate(this.acceptedProperties, instance.pointer, () => new Set()), context.passedProperties);
       schemaContext.rejectedProperties ??= new Set();
       addAll(schemaContext.rejectedProperties, context.failedProperties);
     }
 
     if (keywordId === "https://json-schema.org/keyword/allOf") {
-      const checkpoints = this.allOfCheckpoints.get(instance.pointer);
-      const checkpoint = checkpoints?.pop() ?? 0;
-
+      const checkpoint = this.allOfCheckpoints.get(instance.pointer)?.pop() ?? 0;
       const bucket = this.alternatives.get(instance.pointer);
       if (bucket && bucket.length > checkpoint) {
         const branches = bucket.splice(checkpoint);
         const mine = branches.filter((branch) => branch.groupId === context.groupId);
-        const other = branches.filter((branch) => branch.groupId !== context.groupId);
-
-        bucket.push(...other);
+        bucket.push(...branches.filter((branch) => branch.groupId !== context.groupId));
         if (mine.length > 0) {
           bucket.push(collapseAllOfBranches(mine, schemaContext.groupId));
         }
@@ -143,66 +121,46 @@ export class CompletionEvaluationPlugin implements EvaluationPlugin {
   }
 
   afterSchema(_schemaUri: string, instance: JsonNode, context: CompletionContext, valid: boolean): void {
-    const propertyName = propertyNameOf(instance.pointer);
-    if (propertyName !== undefined) {
-      const outcome = valid ? (context.passedProperties ??= new Set()) : (context.failedProperties ??= new Set());
-      outcome.add(propertyName);
+    if (instance.pointer !== "") {
+      const propertyName = instance.pointer.slice(instance.pointer.lastIndexOf("/") + 1);
+      (valid ? (context.passedProperties ??= new Set()) : (context.failedProperties ??= new Set())).add(propertyName);
     }
 
-    const declaredProperties = context.declaredProperties ?? new Map<string, PropertyValueInfo>();
-    const rejectedProperties = context.rejectedProperties ?? new Set<string>();
-    const isAnyOf = context.isAnyOf ?? false;
-    const isOneOf = context.isOneOf ?? false;
-
-    if (!context.inIfCondition && (declaredProperties.size > 0 || rejectedProperties.size > 0 || context.additionalPropertiesInfo)) {
-      const alternatives = this.alternatives.get(instance.pointer) ?? [];
-      alternatives.push({
-        declaredProperties,
-        additionalPropertiesInfo: context.additionalPropertiesInfo,
-        rejectedProperties,
-        isAnyOf,
-        isOneOf,
-        groupId: context.groupId
+    const { declaredProperties = new Map(), rejectedProperties = new Set(), isAnyOf, isOneOf, groupId, inIfCondition, additionalPropertiesInfo } = context;
+    if (!inIfCondition && (declaredProperties.size > 0 || rejectedProperties.size > 0 || additionalPropertiesInfo)) {
+      getOrCreate(this.alternatives, instance.pointer, () => []).push({
+        declaredProperties, additionalPropertiesInfo, rejectedProperties, isAnyOf, isOneOf, groupId
       });
-      this.alternatives.set(instance.pointer, alternatives);
     }
   }
 
-  getDeclaredProperties(instanceLocation: string): Set<string> {
-    const alternatives = this.alternatives.get(instanceLocation) ?? [];
+  private activeAlternatives(instanceLocation: string): Alternative[] {
     const acceptedProperties = this.acceptedProperties.get(instanceLocation) ?? new Set();
+    return (this.alternatives.get(instanceLocation) ?? []).filter((alternative) => {
+      const isCombinator = alternative.isAnyOf || alternative.isOneOf;
+      return !(isCombinator && Pact.some((property) => acceptedProperties.has(property), alternative.rejectedProperties));
+    });
+  }
 
+  getDeclaredProperties(instanceLocation: string): Set<string> {
     const propertyNames = new Set<string>();
-    for (const alternative of alternatives) {
-      const isContradicted = Pact.some((propertyName) => acceptedProperties.has(propertyName), alternative.rejectedProperties);
-      if ((!alternative.isAnyOf && !alternative.isOneOf) || !isContradicted) {
-        addAll(propertyNames, alternative.declaredProperties?.keys());
-      }
+    for (const alternative of this.activeAlternatives(instanceLocation)) {
+      addAll(propertyNames, alternative.declaredProperties?.keys());
     }
-
     const forbiddenProperties = this.forbiddenProperties.get(instanceLocation);
     return forbiddenProperties ? propertyNames.difference(forbiddenProperties) : propertyNames;
   }
 
   getPropertyValueInfo(instanceLocation: string, propertyName: string): PropertyValueInfo | undefined {
-    const alternatives = this.alternatives.get(instanceLocation) ?? [];
-    const acceptedProperties = this.acceptedProperties.get(instanceLocation) ?? new Set();
-
     let constraints: PropertyValueInfo | undefined;
     let choices: PropertyValueInfo | undefined;
     const oneOfInfos: PropertyValueInfo[] = [];
 
-    for (const alternative of alternatives) {
-      const isContradicted = Pact.some((p) => acceptedProperties.has(p), alternative.rejectedProperties);
-      if ((alternative.isAnyOf || alternative.isOneOf) && isContradicted) {
-        continue;
-      }
-
+    for (const alternative of this.activeAlternatives(instanceLocation)) {
       const info = alternative.declaredProperties.get(propertyName) ?? alternative.additionalPropertiesInfo;
       if (!info) {
         continue;
       }
-
       if (alternative.isAnyOf) {
         choices = choices ? unionValueInfo(choices, info) : info;
       } else if (alternative.isOneOf) {
@@ -227,406 +185,45 @@ const addAll = (target: Set<string>, source?: Iterable<string>) => {
   }
 };
 
-const collapseAllOfBranches = (branches: Alternative[], groupId: number | undefined): Alternative => {
-  const declaredProperties = new Map<string, PropertyValueInfo>();
-  const rejectedProperties = new Set<string>();
-  let additionalPropertiesInfo: PropertyValueInfo | undefined;
-
-  for (const branch of branches) {
-    addAll(rejectedProperties, branch.rejectedProperties);
-    for (const [propertyName, info] of branch.declaredProperties) {
-      const existing = declaredProperties.get(propertyName);
-      declaredProperties.set(propertyName, existing ? intersectValueInfo(existing, info) : info);
-    }
-    if (branch.additionalPropertiesInfo) {
-      additionalPropertiesInfo = additionalPropertiesInfo
-        ? intersectValueInfo(additionalPropertiesInfo, branch.additionalPropertiesInfo)
-        : branch.additionalPropertiesInfo;
-    }
+const getOrCreate = <Key, Value>(map: Map<Key, Value>, key: Key, create: () => Value): Value => {
+  let value = map.get(key);
+  if (value === undefined) {
+    value = create();
+    map.set(key, value);
   }
-
-  return {
-    declaredProperties,
-    additionalPropertiesInfo,
-    rejectedProperties,
-    isAnyOf: branches[0].isAnyOf,
-    isOneOf: branches[0].isOneOf,
-    groupId
-  };
+  return value;
 };
 
-const propertyNameOf = (instanceLocation: string) => {
-  if (instanceLocation === "") {
-    return;
-  }
+const keyOf = (value: unknown): string => JSON.stringify(value);
 
-  return instanceLocation.slice(instanceLocation.lastIndexOf("/") + 1);
+// De duplicate a list of primitives (e.g. type names) by identity.
+const unique = (values: Iterable<string>): string[] => Array.from(new Set(values));
+
+// De duplicating the JSON values by structural equality, since two branches can produce equal but distinct objects.
+const uniqueValues = (values: Iterable<unknown>): unknown[] => {
+  const seen = new Set<string>();
+  const result: unknown[] = [];
+  for (const value of values) {
+    const key = keyOf(value);
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(value);
+    }
+  }
+  return result;
 };
 
-const resolveValueInfo = (ast: Record<string, unknown> | undefined, schemaUri: string, visited: Set<string> = new Set()): PropertyValueInfo => {
-  try {
-    const info: PropertyValueInfo = { hasConst: false };
-    const node = ast?.[schemaUri];
-    // `$ref` can point back into a schema we're already inside, so stop rather than recurse forever
-    if (!Array.isArray(node) || visited.has(schemaUri)) {
-      return info;
-    }
-    const path = new Set(visited).add(schemaUri);
-
-    // Combinators nested inside a leaf schema are resolved here rather than by the evaluation hooks, which only see combinators at object lvl
-    const nestedInfos: PropertyValueInfo[] = [];
-    let thenInfo: PropertyValueInfo | undefined;
-    let elseInfo: PropertyValueInfo | undefined;
-
-    for (const [keywordId, , keywordValue] of node as [string, unknown, unknown][]) {
-      if (keywordId === "https://json-schema.org/keyword/type") {
-        info.type = keywordValue as string | string[];
-      } else if (keywordId === "https://json-schema.org/keyword/enum") {
-        info.enum = (keywordValue as string[]).map((v) => JSON.parse(v) as unknown);
-      } else if (keywordId === "https://json-schema.org/keyword/const") {
-        info.const = JSON.parse(keywordValue as string) as unknown;
-        info.hasConst = true;
-      } else if (keywordId === "https://json-schema.org/keyword/not") {
-        info.excluded = resolveExcludedValues(ast, keywordValue as string);
-        info.excludedTypes = resolveExcludedTypes(ast, keywordValue as string);
-      } else if (keywordId === "https://json-schema.org/keyword/allOf") {
-        const branches = (keywordValue as string[]).map((uri) => resolveValueInfo(ast, uri, path));
-        if (branches.length > 0) {
-          nestedInfos.push(branches.reduce((a, b) => intersectValueInfo(a, b)));
-        }
-      } else if (keywordId === "https://json-schema.org/keyword/anyOf") {
-        const branches = (keywordValue as string[]).map((uri) => resolveValueInfo(ast, uri, path));
-        if (branches.length > 0) {
-          nestedInfos.push(branches.reduce((a, b) => unionValueInfo(a, b)));
-        }
-      } else if (keywordId === "https://json-schema.org/keyword/oneOf") {
-        const branches = (keywordValue as string[]).map((uri) => resolveValueInfo(ast, uri, path));
-        if (branches.length > 0) {
-          nestedInfos.push(exactlyOneValueInfo(branches));
-        }
-      } else if (keywordId === "https://json-schema.org/keyword/ref") {
-        // A `$ref` in the schema being validated against, not one in the document being edited, only reaches $refs that appear in a property's own subschema
-        nestedInfos.push(resolveValueInfo(ast, keywordValue as string, path));
-      } else if (keywordId === "https://json-schema.org/keyword/then") {
-        const [, thenUri] = keywordValue as string[];
-        thenInfo = thenUri ? resolveValueInfo(ast, thenUri, path) : undefined;
-      } else if (keywordId === "https://json-schema.org/keyword/else") {
-        const [, elseUri] = keywordValue as string[];
-        elseInfo = elseUri ? resolveValueInfo(ast, elseUri, path) : undefined;
-      }
-    }
-
-    if (thenInfo ?? elseInfo) {
-      nestedInfos.push(unionValueInfo(thenInfo ?? { hasConst: false }, elseInfo ?? { hasConst: false }));
-    }
-
-    if (info.excludedTypes && info.type) {
-      const excludedTypesSet = new Set(info.excludedTypes);
-      info.type = (Array.isArray(info.type) ? info.type : [info.type]).filter((t) => !excludedTypesSet.has(t));
-    }
-
-    if (info.type) {
-      const allowedTypes = info.type;
-      if (info.enum) {
-        info.enum = info.enum.filter((value) => isAnyType(value, allowedTypes));
-      }
-      if (info.hasConst && !isAnyType(info.const, allowedTypes)) {
-        info.hasConst = false;
-        info.const = undefined;
-      }
-    }
-
-    if (info.excludedTypes) {
-      const excludedTypes = info.excludedTypes;
-      if (info.enum) {
-        info.enum = info.enum.filter((value) => !isAnyType(value, excludedTypes));
-      }
-      if (info.hasConst && isAnyType(info.const, excludedTypes)) {
-        info.hasConst = false;
-        info.const = undefined;
-      }
-    }
-
-    if (info.excluded) {
-      const excludedKeys = new Set(info.excluded.map((value) => JSON.stringify(value)));
-      if (info.enum) {
-        info.enum = info.enum.filter((value) => !excludedKeys.has(JSON.stringify(value)));
-      }
-      if (info.hasConst && excludedKeys.has(JSON.stringify(info.const))) {
-        info.hasConst = false;
-        info.const = undefined;
-      }
-    }
-
-    if (nestedInfos.length > 0) {
-      const combined = nestedInfos.reduce((a, b) => intersectValueInfo(a, b));
-      return isUnconstrained(info) ? combined : intersectValueInfo(info, combined);
-    }
-
-    return info;
-  } catch {
-    return { hasConst: false };
-  }
+const intersectValues = (first: unknown[], second: unknown[]): unknown[] => {
+  const secondKeys = new Set(second.map(keyOf));
+  return first.filter((value) => secondKeys.has(keyOf(value)));
 };
 
-const resolveExcludedValues = (ast: Record<string, unknown> | undefined, schemaUri: string): unknown[] | undefined => {
-  const node = ast?.[schemaUri];
-  if (!Array.isArray(node)) {
-    return;
-  }
-
-  const values: unknown[] = [];
-  for (const [keywordId, , keywordValue] of node as [string, unknown, unknown][]) {
-    if (keywordId === "https://json-schema.org/keyword/const") {
-      values.push(JSON.parse(keywordValue as string) as unknown);
-    } else if (keywordId === "https://json-schema.org/keyword/enum") {
-      for (const v of keywordValue as string[]) {
-        values.push(JSON.parse(v) as unknown);
-      }
-    }
-  }
-  return values.length > 0 ? values : undefined;
+const withoutValues = (values: unknown[], remove: unknown[]): unknown[] => {
+  const removeKeys = new Set(remove.map(keyOf));
+  return values.filter((value) => !removeKeys.has(keyOf(value)));
 };
 
-const resolveExcludedTypes = (ast: Record<string, unknown> | undefined, schemaUri: string): string[] | undefined => {
-  const node = ast?.[schemaUri];
-  if (!Array.isArray(node)) {
-    return;
-  }
-
-  for (const [keywordId, , keywordValue] of node as [string, unknown, unknown][]) {
-    if (keywordId === "https://json-schema.org/keyword/type") {
-      const type = keywordValue as string | string[];
-      return Array.isArray(type) ? type : [type];
-    }
-  }
-};
-
-const intersectValueInfo = (a: PropertyValueInfo, b: PropertyValueInfo): PropertyValueInfo => {
-  let excludedTypes: string[] | undefined;
-  if (a.excludedTypes ?? b.excludedTypes) {
-    const seen = new Set<string>();
-    excludedTypes = [];
-    for (const t of Pact.concat(a.excludedTypes ?? [], b.excludedTypes ?? [])) {
-      if (!seen.has(t)) {
-        seen.add(t);
-        excludedTypes.push(t);
-      }
-    }
-  }
-
-  let type = a.type !== undefined && b.type !== undefined
-    ? intersectTypes(a.type, b.type)
-    : a.type ?? b.type;
-
-  if (excludedTypes && type) {
-    const excludedTypesSet = new Set(excludedTypes);
-    type = (Array.isArray(type) ? type : [type]).filter((t) => !excludedTypesSet.has(t));
-  }
-
-  let enumValues: unknown[] | undefined;
-  if (a.enum && b.enum) {
-    const enumA = new Set(a.enum.map((v) => JSON.stringify(v)));
-    const enumB = new Set(b.enum.map((v) => JSON.stringify(v)));
-    enumValues = [...enumA.intersection(enumB)].map((v) => JSON.parse(v));
-  } else {
-    enumValues = a.enum ?? b.enum;
-  }
-
-  const bothHaveConst = a.hasConst && b.hasConst;
-  const constsMatch = bothHaveConst && JSON.stringify(a.const) === JSON.stringify(b.const);
-  let hasConst = bothHaveConst ? constsMatch : (a.hasConst || b.hasConst);
-  let constValue = bothHaveConst ? (constsMatch ? a.const : undefined) : (a.hasConst ? a.const : b.const);
-
-  if (enumValues && type) {
-    const allowedTypes = type;
-    enumValues = enumValues.filter((value) => isAnyType(value, allowedTypes));
-  }
-
-  if (excludedTypes) {
-    const rejectedTypes = excludedTypes;
-    if (enumValues) {
-      enumValues = enumValues.filter((value) => !isAnyType(value, rejectedTypes));
-    }
-    if (hasConst && isAnyType(constValue, rejectedTypes)) {
-      hasConst = false;
-      constValue = undefined;
-    }
-  }
-
-  let excluded: unknown[] | undefined;
-  if (a.excluded ?? b.excluded) {
-    const seen = new Set<string>();
-    excluded = [];
-    for (const value of Pact.concat(a.excluded ?? [], b.excluded ?? [])) {
-      const key = JSON.stringify(value);
-      if (!seen.has(key)) {
-        seen.add(key);
-        excluded.push(value);
-      }
-    }
-  }
-
-  if (excluded) {
-    const excludedKeys = new Set(excluded.map((value) => JSON.stringify(value)));
-    if (enumValues) {
-      enumValues = enumValues.filter((value) => !excludedKeys.has(JSON.stringify(value)));
-    }
-    if (hasConst && excludedKeys.has(JSON.stringify(constValue))) {
-      hasConst = false;
-      constValue = undefined;
-    }
-  }
-
-  return {
-    type,
-    enum: enumValues,
-    const: constValue,
-    hasConst,
-    excluded,
-    excludedTypes,
-    permitsAnyValue: (isOpen(a) && isOpen(b)) || undefined
-  };
-};
-
-const isOpen = (info: PropertyValueInfo): boolean => {
-  return info.permitsAnyValue === true || (!info.hasConst && !info.enum);
-};
-
-const typeList = (type: string | string[]): string[] => {
-  return Array.isArray(type) ? type : [type];
-};
-
-const intersectTypes = (a: string | string[], b: string | string[]): string[] => {
-  const bTypes = new Set(typeList(b));
-
-  const types = new Set<string>();
-  for (const type of typeList(a)) {
-    if (bTypes.has(type)) {
-      types.add(type);
-    } else if ((type === "number" && bTypes.has("integer")) || (type === "integer" && bTypes.has("number"))) {
-      types.add("integer");
-    }
-  }
-
-  return [...types];
-};
-
-const isType = (value: unknown, type: string): boolean => {
-  return type === "integer"
-    ? typeof value === "number" && Number.isInteger(value)
-    : jsonTypeOf(value) === type;
-};
-
-const isAnyType = (value: unknown, types: string | string[]): boolean => {
-  return typeList(types).some((type) => isType(value, type));
-};
-
-const exactlyOneValueInfo = (infos: PropertyValueInfo[]): PropertyValueInfo => {
-  const unioned = infos.reduce((a, b) => unionValueInfo(a, b));
-
-  const valuesOf = (info: PropertyValueInfo) => info.hasConst ? [info.const] : info.enum;
-  const counts = new Map<string, number>();
-  for (const info of infos) {
-    for (const value of valuesOf(info) ?? []) {
-      const key = JSON.stringify(value);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-  }
-
-  const enumValues = unioned.enum?.filter((value) => counts.get(JSON.stringify(value)) === 1);
-
-  return { ...unioned, enum: enumValues };
-};
-
-const isUnconstrained = (info: PropertyValueInfo): boolean => {
-  return !info.type && !info.hasConst && !info.enum && !info.excluded && !info.excludedTypes;
-};
-
-const unionValueInfo = (a: PropertyValueInfo, b: PropertyValueInfo): PropertyValueInfo => {
-  const aIsUnconstrained = isUnconstrained(a);
-  const bIsUnconstrained = isUnconstrained(b);
-  if (aIsUnconstrained && bIsUnconstrained) {
-    return { hasConst: false, permitsAnyValue: true };
-  }
-  if (aIsUnconstrained) {
-    return { ...b, type: undefined, excluded: undefined, excludedTypes: undefined, permitsAnyValue: true };
-  }
-  if (bIsUnconstrained) {
-    return { ...a, type: undefined, excluded: undefined, excludedTypes: undefined, permitsAnyValue: true };
-  }
-
-  let type: string | string[] | undefined;
-  let namesTypeAndValues = false;
-  if (a.type && b.type) {
-    const types = Pact.collectSet(Pact.concat(
-      Array.isArray(a.type) ? a.type : [a.type],
-      Array.isArray(b.type) ? b.type : [b.type]
-    ));
-    type = types.size === 1 ? Pact.head(types) : [...types];
-  } else if (a.type ?? b.type) {
-    const typeSide = a.type !== undefined ? a : b;
-    if (!typeSide.hasConst && !typeSide.enum) {
-      type = typeSide.type;
-      namesTypeAndValues = true;
-    }
-  }
-
-  let excludedTypes: string[] | undefined;
-  if (a.excludedTypes && b.excludedTypes) {
-    const bSet = new Set(b.excludedTypes);
-    excludedTypes = a.excludedTypes.filter((t) => bSet.has(t));
-    if (excludedTypes.length === 0) {
-      excludedTypes = undefined;
-    }
-  }
-
-  if (excludedTypes && type) {
-    const excludedTypesSet = new Set(excludedTypes);
-    type = (Array.isArray(type) ? type : [type]).filter((t) => !excludedTypesSet.has(t));
-  }
-
-  const aValues = a.hasConst ? [a.const] : a.enum;
-  const bValues = b.hasConst ? [b.const] : b.enum;
-
-  let enumValues: unknown[] | undefined;
-  if (aValues && bValues) {
-    const seen = new Set(aValues.map((value) => JSON.stringify(value)));
-    enumValues = [...aValues];
-    for (const value of bValues) {
-      const key = JSON.stringify(value);
-      if (!seen.has(key)) {
-        seen.add(key);
-        enumValues.push(value);
-      }
-    }
-  } else {
-    enumValues = aValues ?? bValues;
-  }
-
-  let excluded: unknown[] | undefined;
-  if (a.excluded && b.excluded) {
-    const bKeys = new Set(b.excluded.map((value) => JSON.stringify(value)));
-    excluded = a.excluded.filter((value) => bKeys.has(JSON.stringify(value)));
-    if (excluded.length === 0) {
-      excluded = undefined;
-    }
-  }
-
-  if (excluded && enumValues) {
-    const excludedKeys = new Set(excluded.map((value) => JSON.stringify(value)));
-    enumValues = enumValues.filter((value) => !excludedKeys.has(JSON.stringify(value)));
-  }
-
-  return {
-    type,
-    enum: enumValues,
-    hasConst: false,
-    excluded,
-    excludedTypes,
-    permitsAnyValue: namesTypeAndValues || undefined
-  };
-};
+const typeList = (type: string | string[]): string[] => Array.isArray(type) ? type : [type];
 
 const jsonTypeOf = (value: unknown): string => {
   if (value === null) {
@@ -635,6 +232,233 @@ const jsonTypeOf = (value: unknown): string => {
   if (Array.isArray(value)) {
     return "array";
   }
-  const t = typeof value;
-  return t === "number" ? "number" : t;
+  return typeof value === "number" ? "number" : typeof value;
+};
+
+const isType = (value: unknown, type: string): boolean => {
+  if (type === "integer") {
+    return typeof value === "number" && Number.isInteger(value);
+  }
+  return jsonTypeOf(value) === type;
+};
+
+const isAnyType = (value: unknown, types: string | string[]): boolean => typeList(types).some((type) => isType(value, type));
+
+const intersectTypes = (first: string | string[], second: string | string[]): string[] => {
+  const secondTypes = new Set(typeList(second));
+  const result = new Set<string>();
+  for (const type of typeList(first)) {
+    if (secondTypes.has(type)) {
+      result.add(type);
+    } else if ((type === "number" && secondTypes.has("integer")) || (type === "integer" && secondTypes.has("number"))) {
+      result.add("integer");
+    }
+  }
+  return Array.from(result);
+};
+
+const isUnconstrained = (info: PropertyValueInfo): boolean => !info.type && !info.hasConst && !info.enum && !info.excluded && !info.excludedTypes;
+
+const isOpen = (info: PropertyValueInfo): boolean => info.permitsAnyValue === true || (!info.hasConst && !info.enum);
+
+// Drop any enum/const values that contradict the info's own type, excludedTypes, or excluded set.
+const dropContradictoryValues = (info: PropertyValueInfo): PropertyValueInfo => {
+  let { type, enum: enumValues, const: constValue, hasConst, excluded, excludedTypes } = info;
+
+  if (type && excludedTypes) {
+    const rejectedTypes = new Set(excludedTypes);
+    type = typeList(type).filter((candidate) => !rejectedTypes.has(candidate));
+  }
+
+  if (type && enumValues) {
+    enumValues = enumValues.filter((value) => isAnyType(value, type));
+  }
+
+  if (excludedTypes && enumValues) {
+    enumValues = enumValues.filter((value) => !isAnyType(value, excludedTypes));
+  }
+
+  if (excludedTypes && hasConst && isAnyType(constValue, excludedTypes)) {
+    hasConst = false;
+    constValue = undefined;
+  }
+
+  if (excluded && enumValues) {
+    enumValues = enumValues.filter((value) => !excluded.some((excludedValue) => keyOf(excludedValue) === keyOf(value)));
+  }
+
+  if (excluded && hasConst && excluded.some((excludedValue) => keyOf(excludedValue) === keyOf(constValue))) {
+    hasConst = false;
+    constValue = undefined;
+  }
+
+  return { ...info, type, enum: enumValues, const: constValue, hasConst };
+};
+
+const intersectValueInfo = (first: PropertyValueInfo, second: PropertyValueInfo): PropertyValueInfo => {
+  const type = first.type && second.type ? intersectTypes(first.type, second.type) : first.type ?? second.type;
+  const enumValues = first.enum && second.enum ? intersectValues(first.enum, second.enum) : first.enum ?? second.enum;
+  const bothHaveConst = first.hasConst && second.hasConst;
+  const constsMatch = bothHaveConst && keyOf(first.const) === keyOf(second.const);
+
+  return dropContradictoryValues({
+    type,
+    enum: enumValues,
+    const: bothHaveConst ? (constsMatch ? first.const : undefined) : (first.hasConst ? first.const : second.const),
+    hasConst: bothHaveConst ? constsMatch : (first.hasConst || second.hasConst),
+    excluded: (first.excluded ?? second.excluded) ? uniqueValues(Pact.concat(first.excluded ?? [], second.excluded ?? [])) : undefined,
+    excludedTypes: (first.excludedTypes ?? second.excludedTypes) ? unique(Pact.concat(first.excludedTypes ?? [], second.excludedTypes ?? [])) : undefined,
+    permitsAnyValue: (isOpen(first) && isOpen(second)) || undefined
+  });
+};
+
+const unionValueInfo = (first: PropertyValueInfo, second: PropertyValueInfo): PropertyValueInfo => {
+  if (isUnconstrained(first)) {
+    return { ...second, type: undefined, excluded: undefined, excludedTypes: undefined, permitsAnyValue: true };
+  }
+  if (isUnconstrained(second)) {
+    return { ...first, type: undefined, excluded: undefined, excludedTypes: undefined, permitsAnyValue: true };
+  }
+
+  let type: string | string[] | undefined;
+  let namesTypeAndValues = false;
+
+  if (first.type && second.type) {
+    type = unique(Pact.concat(typeList(first.type), typeList(second.type)));
+  } else if (first.type ?? second.type) {
+    const side = first.type !== undefined ? first : second;
+    if (!side.hasConst && !side.enum) {
+      type = side.type;
+      namesTypeAndValues = true;
+    }
+  }
+
+  let excludedTypes: string[] | undefined;
+  if (first.excludedTypes && second.excludedTypes) {
+    const shared = intersectValues(first.excludedTypes, second.excludedTypes) as string[];
+    excludedTypes = shared.length > 0 ? shared : undefined;
+  }
+
+  if (excludedTypes && type) {
+    const rejectedTypes = new Set(excludedTypes);
+    type = typeList(type).filter((candidate) => !rejectedTypes.has(candidate));
+  }
+
+  const firstValues = first.hasConst ? [first.const] : first.enum;
+  const secondValues = second.hasConst ? [second.const] : second.enum;
+  let enumValues = firstValues && secondValues ? uniqueValues(Pact.concat(firstValues, secondValues)) : firstValues ?? secondValues;
+
+  let excluded: unknown[] | undefined;
+  if (first.excluded && second.excluded) {
+    const shared = intersectValues(first.excluded, second.excluded);
+    excluded = shared.length > 0 ? shared : undefined;
+  }
+
+  if (excluded && enumValues) {
+    enumValues = withoutValues(enumValues, excluded);
+  }
+
+  const resultType = type && typeList(type).length === 1 ? typeList(type)[0] : type;
+  return { type: resultType, enum: enumValues, hasConst: false, excluded, excludedTypes, permitsAnyValue: namesTypeAndValues || undefined };
+};
+
+const exactlyOneValueInfo = (infos: PropertyValueInfo[]): PropertyValueInfo => {
+  const unioned = infos.reduce((merged, incoming) => unionValueInfo(merged, incoming));
+  const counts = new Map<string, number>();
+  for (const info of infos) {
+    for (const value of (info.hasConst ? [info.const] : info.enum) ?? []) {
+      counts.set(keyOf(value), (counts.get(keyOf(value)) ?? 0) + 1);
+    }
+  }
+  return { ...unioned, enum: unioned.enum?.filter((value) => counts.get(keyOf(value)) === 1) };
+};
+
+const collapseAllOfBranches = (branches: Alternative[], groupId: number | undefined): Alternative => {
+  const declaredProperties = new Map<string, PropertyValueInfo>();
+  const rejectedProperties = new Set<string>();
+  for (const branch of branches) {
+    addAll(rejectedProperties, branch.rejectedProperties);
+    for (const [name, info] of branch.declaredProperties) {
+      const existing = declaredProperties.get(name);
+      declaredProperties.set(name, existing ? intersectValueInfo(existing, info) : info);
+    }
+  }
+  return { declaredProperties, rejectedProperties, isAnyOf: branches[0].isAnyOf, isOneOf: branches[0].isOneOf, groupId };
+};
+
+// Read a not subschema for the values and types it forbids, in a single pass over the node.
+const resolveNegation = (ast: Record<string, unknown> | undefined, schemaUri: string): { excluded?: unknown[]; excludedTypes?: string[] } => {
+  const node = ast?.[schemaUri];
+  if (!Array.isArray(node)) {
+    return {};
+  }
+  const values: unknown[] = [];
+  let excludedTypes: string[] | undefined;
+  for (const [keywordId, , keywordValue] of node as [string, unknown, unknown][]) {
+    if (keywordId === "https://json-schema.org/keyword/const") {
+      values.push(JSON.parse(keywordValue as string));
+    } else if (keywordId === "https://json-schema.org/keyword/enum") {
+      for (const entry of keywordValue as string[]) {
+        values.push(JSON.parse(entry));
+      }
+    } else if (keywordId === "https://json-schema.org/keyword/type") {
+      excludedTypes = typeList(keywordValue as string | string[]);
+    }
+  }
+  return { excluded: values.length > 0 ? values : undefined, excludedTypes };
+};
+
+const resolveValueInfo = (ast: Record<string, unknown> | undefined, schemaUri: string, visited: Set<string> = new Set()): PropertyValueInfo => {
+  try {
+    let info: PropertyValueInfo = { hasConst: false };
+    const node = ast?.[schemaUri];
+    if (!Array.isArray(node) || visited.has(schemaUri)) {
+      return info;
+    }
+
+    const path = new Set(visited).add(schemaUri);
+    // A combinator in a property's value schema isn't evaluated while that value is still unwritten, so no hook sees it so we resolve it here.
+    const nestedInfos: PropertyValueInfo[] = [];
+
+    for (const [keywordId, , keywordValue] of node as [string, unknown, unknown][]) {
+      if (keywordId === "https://json-schema.org/keyword/type") {
+        info.type = keywordValue as string | string[];
+      } else if (keywordId === "https://json-schema.org/keyword/enum") {
+        info.enum = (keywordValue as string[]).map((entry) => JSON.parse(entry));
+      } else if (keywordId === "https://json-schema.org/keyword/const") {
+        info.const = JSON.parse(keywordValue as string);
+        info.hasConst = true;
+      } else if (keywordId === "https://json-schema.org/keyword/not") {
+        ({ excluded: info.excluded, excludedTypes: info.excludedTypes } = resolveNegation(ast, keywordValue as string));
+      } else if (keywordId === "https://json-schema.org/keyword/allOf") {
+        const branches = (keywordValue as string[]).map((branchUri) => resolveValueInfo(ast, branchUri, path));
+        if (branches.length > 0) {
+          nestedInfos.push(branches.reduce((merged, incoming) => intersectValueInfo(merged, incoming)));
+        }
+      } else if (keywordId === "https://json-schema.org/keyword/anyOf") {
+        const branches = (keywordValue as string[]).map((branchUri) => resolveValueInfo(ast, branchUri, path));
+        if (branches.length > 0) {
+          nestedInfos.push(branches.reduce((merged, incoming) => unionValueInfo(merged, incoming)));
+        }
+      } else if (keywordId === "https://json-schema.org/keyword/oneOf") {
+        const branches = (keywordValue as string[]).map((branchUri) => resolveValueInfo(ast, branchUri, path));
+        if (branches.length > 0) {
+          nestedInfos.push(exactlyOneValueInfo(branches));
+        }
+      }
+    }
+
+    info = dropContradictoryValues(info);
+    if (info.type && info.hasConst && !isAnyType(info.const, info.type)) {
+      info = { ...info, hasConst: false, const: undefined };
+    }
+
+    if (nestedInfos.length > 0) {
+      const combined = nestedInfos.reduce((merged, incoming) => intersectValueInfo(merged, incoming));
+      return isUnconstrained(info) ? combined : intersectValueInfo(info, combined);
+    }
+    return info;
+  } catch {
+    return { hasConst: false };
+  }
 };
