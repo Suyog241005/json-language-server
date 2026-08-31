@@ -105,6 +105,14 @@ export class JsonDocument implements TextDocument {
     return this.textDocument.offsetAt(position);
   }
 
+  getLineRange(line: number) {
+    return this.textDocument.getLineRange(line);
+  }
+
+  getEOLCharacters(line: number) {
+    return this.textDocument.getEOLCharacters(line);
+  }
+
   rangeAt(startOffset: number, endOffset: number) {
     return {
       start: this.positionAt(startOffset),

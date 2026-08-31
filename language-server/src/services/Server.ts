@@ -56,6 +56,7 @@ export class Server implements Connection {
   declare onCodeLensResolve: Connection["onCodeLensResolve"];
   declare onDocumentFormatting: Connection["onDocumentFormatting"];
   declare onDocumentRangeFormatting: Connection["onDocumentRangeFormatting"];
+  declare onDocumentRangesFormatting: Connection["onDocumentRangesFormatting"];
   declare onDocumentOnTypeFormatting: Connection["onDocumentOnTypeFormatting"];
   declare onRenameRequest: Connection["onRenameRequest"];
   declare onPrepareRename: Connection["onPrepareRename"];
@@ -151,6 +152,7 @@ export class Server implements Connection {
     this.onCodeLensResolve = this.connection.onCodeLensResolve.bind(this.connection);
     this.onDocumentFormatting = this.connection.onDocumentFormatting.bind(this.connection);
     this.onDocumentRangeFormatting = this.connection.onDocumentRangeFormatting.bind(this.connection);
+    this.onDocumentRangesFormatting = this.connection.onDocumentRangesFormatting.bind(this.connection);
     this.onDocumentOnTypeFormatting = this.connection.onDocumentOnTypeFormatting.bind(this.connection);
     this.onRenameRequest = this.connection.onRenameRequest.bind(this.connection);
     this.onPrepareRename = this.connection.onPrepareRename.bind(this.connection);
