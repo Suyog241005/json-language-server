@@ -12,6 +12,7 @@ import { FoldingRanges } from "./features/FoldingRanges.ts";
 import { DocumentSymbols } from "./features/DocumentSymbols.ts";
 import { SelectionRanges } from "./features/SelectionRanges.ts";
 import { DocumentLinks } from "./features/DocumentLinks.ts";
+import { DocumentColors } from "./features/DocumentColors.ts";
 
 import "@hyperjump/json-schema/draft-2020-12";
 import "@hyperjump/json-schema/draft-2019-09";
@@ -45,6 +46,7 @@ export const buildServer = (connection: Connection): Server => {
   new DocumentSymbols(server, documents);
   new SelectionRanges(server, documents);
   new DocumentLinks(server, documents, workspace);
+  new DocumentColors(server, documents);
 
   return server;
 };
