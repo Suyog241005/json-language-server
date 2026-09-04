@@ -7,10 +7,9 @@ import type { Node } from "@hyperjump/json-schema/experimental";
 
 export type PropertyValueInfo = {
   type?: string | string[];
-  enum?: unknown[];
-  const?: unknown;
-  hasConst: boolean;
-  excluded?: unknown[];
+  enum?: string[];
+  const?: string;
+  excluded?: string[];
   excludedTypes?: string[];
   permitsAnyValue?: boolean;
 };
@@ -91,7 +90,7 @@ export class CompletionEvaluationPlugin implements EvaluationPlugin {
       schemaContext.declaredProperties ??= new Map();
       for (const name of keywordValue as string[]) {
         if (!schemaContext.declaredProperties.has(name)) {
-          schemaContext.declaredProperties.set(name, { hasConst: false });
+          schemaContext.declaredProperties.set(name, {});
         }
       }
     }
@@ -194,55 +193,55 @@ const getOrCreate = <Key, Value>(map: Map<Key, Value>, key: Key, create: () => V
   return value;
 };
 
-const keyOf = (value: unknown): string => JSON.stringify(value);
-
 // De duplicate a list of primitives (e.g. type names) by identity.
 const unique = (values: Iterable<string>): string[] => Array.from(new Set(values));
 
-// De duplicating the JSON values by structural equality, since two branches can produce equal but distinct objects.
-const uniqueValues = (values: Iterable<unknown>): unknown[] => {
-  const seen = new Set<string>();
-  const result: unknown[] = [];
-  for (const value of values) {
-    const key = keyOf(value);
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(value);
-    }
-  }
-  return result;
+const intersectValues = (first: string[], second: string[]): string[] => {
+  const secondKeys = new Set(second);
+  return first.filter((value) => secondKeys.has(value));
 };
 
-const intersectValues = (first: unknown[], second: unknown[]): unknown[] => {
-  const secondKeys = new Set(second.map(keyOf));
-  return first.filter((value) => secondKeys.has(keyOf(value)));
-};
-
-const withoutValues = (values: unknown[], remove: unknown[]): unknown[] => {
-  const removeKeys = new Set(remove.map(keyOf));
-  return values.filter((value) => !removeKeys.has(keyOf(value)));
+const withoutValues = (values: string[], remove: string[]): string[] => {
+  const removeKeys = new Set(remove);
+  return values.filter((value) => !removeKeys.has(value));
 };
 
 const typeList = (type: string | string[]): string[] => Array.isArray(type) ? type : [type];
 
-const jsonTypeOf = (value: unknown): string => {
-  if (value === null) {
-    return "null";
+const jsonTypeOf = (value: string): string => {
+  switch (value.charAt(0)) {
+    case "{":
+      return "object";
+    case "[":
+      return "array";
+    case "\"":
+      return "string";
+    case "t":
+    case "f":
+      return "boolean";
+    case "n":
+      return "null";
+    default:
+      return "number";
   }
-  if (Array.isArray(value)) {
-    return "array";
-  }
-  return typeof value === "number" ? "number" : typeof value;
 };
 
-const isType = (value: unknown, type: string): boolean => {
+const isType = (value: string, type: string): boolean => {
   if (type === "integer") {
-    return typeof value === "number" && Number.isInteger(value);
+    return jsonTypeOf(value) === "number" && Number.isInteger(Number(value));
   }
   return jsonTypeOf(value) === type;
 };
 
-const isAnyType = (value: unknown, types: string | string[]): boolean => typeList(types).some((type) => isType(value, type));
+const isAnyType = (value: string, types: string | string[]): boolean => typeList(types).some((type) => isType(value, type));
+
+// The JSON values (as strings) a value info constrains its property to, if any.
+const valuesOf = (info: PropertyValueInfo): string[] | undefined => {
+  if (info.const !== undefined) {
+    return [info.const];
+  }
+  return info.enum;
+};
 
 const intersectTypes = (first: string | string[], second: string | string[]): string[] => {
   const secondTypes = new Set(typeList(second));
@@ -257,56 +256,44 @@ const intersectTypes = (first: string | string[], second: string | string[]): st
   return Array.from(result);
 };
 
-const isUnconstrained = (info: PropertyValueInfo): boolean => !info.type && !info.hasConst && !info.enum && !info.excluded && !info.excludedTypes;
+const isUnconstrained = (info: PropertyValueInfo): boolean => !info.type && info.const === undefined && !info.enum && !info.excluded && !info.excludedTypes;
 
-const isOpen = (info: PropertyValueInfo): boolean => info.permitsAnyValue === true || (!info.hasConst && !info.enum);
+const isOpen = (info: PropertyValueInfo): boolean => info.permitsAnyValue === true || (info.const === undefined && !info.enum);
 
 // Drop any enum/const values that contradict the info's own type, excludedTypes, or excluded set.
 const dropContradictoryValues = (info: PropertyValueInfo): PropertyValueInfo => {
-  let { type, enum: enumValues, const: constValue, hasConst, excluded, excludedTypes } = info;
+  let { type, enum: enumValues, const: constValue, excluded, excludedTypes } = info;
 
   if (type && excludedTypes) {
     const rejectedTypes = new Set(excludedTypes);
     type = typeList(type).filter((candidate) => !rejectedTypes.has(candidate));
   }
 
-  if (type && enumValues) {
-    enumValues = enumValues.filter((value) => isAnyType(value, type));
-  }
+  const drop = (values: string[]): string[] => values.filter((value) => {
+    return (!type || isAnyType(value, type)) && (!excludedTypes || !isAnyType(value, excludedTypes)) && (!excluded || !excluded.includes(value));
+  });
 
-  if (excludedTypes && enumValues) {
-    enumValues = enumValues.filter((value) => !isAnyType(value, excludedTypes));
+  if (enumValues) {
+    enumValues = drop(enumValues);
   }
-
-  if (excludedTypes && hasConst && isAnyType(constValue, excludedTypes)) {
-    hasConst = false;
+  if (constValue !== undefined && !drop([constValue]).includes(constValue)) {
     constValue = undefined;
   }
 
-  if (excluded && enumValues) {
-    enumValues = enumValues.filter((value) => !excluded.some((excludedValue) => keyOf(excludedValue) === keyOf(value)));
-  }
-
-  if (excluded && hasConst && excluded.some((excludedValue) => keyOf(excludedValue) === keyOf(constValue))) {
-    hasConst = false;
-    constValue = undefined;
-  }
-
-  return { ...info, type, enum: enumValues, const: constValue, hasConst };
+  return { ...info, type, enum: enumValues, const: constValue };
 };
 
 const intersectValueInfo = (first: PropertyValueInfo, second: PropertyValueInfo): PropertyValueInfo => {
   const type = first.type && second.type ? intersectTypes(first.type, second.type) : first.type ?? second.type;
   const enumValues = first.enum && second.enum ? intersectValues(first.enum, second.enum) : first.enum ?? second.enum;
-  const bothHaveConst = first.hasConst && second.hasConst;
-  const constsMatch = bothHaveConst && keyOf(first.const) === keyOf(second.const);
+  const bothHaveConst = first.const !== undefined && second.const !== undefined;
+  const constsMatch = bothHaveConst && first.const === second.const;
 
   return dropContradictoryValues({
     type,
     enum: enumValues,
-    const: bothHaveConst ? (constsMatch ? first.const : undefined) : (first.hasConst ? first.const : second.const),
-    hasConst: bothHaveConst ? constsMatch : (first.hasConst || second.hasConst),
-    excluded: (first.excluded ?? second.excluded) ? uniqueValues(Pact.concat(first.excluded ?? [], second.excluded ?? [])) : undefined,
+    const: bothHaveConst ? (constsMatch ? first.const : undefined) : (first.const ?? second.const),
+    excluded: (first.excluded ?? second.excluded) ? unique(Pact.concat(first.excluded ?? [], second.excluded ?? [])) : undefined,
     excludedTypes: (first.excludedTypes ?? second.excludedTypes) ? unique(Pact.concat(first.excludedTypes ?? [], second.excludedTypes ?? [])) : undefined,
     permitsAnyValue: (isOpen(first) && isOpen(second)) || undefined
   });
@@ -327,7 +314,7 @@ const unionValueInfo = (first: PropertyValueInfo, second: PropertyValueInfo): Pr
     type = unique(Pact.concat(typeList(first.type), typeList(second.type)));
   } else if (first.type ?? second.type) {
     const side = first.type !== undefined ? first : second;
-    if (!side.hasConst && !side.enum) {
+    if (side.const === undefined && !side.enum) {
       type = side.type;
       namesTypeAndValues = true;
     }
@@ -335,7 +322,7 @@ const unionValueInfo = (first: PropertyValueInfo, second: PropertyValueInfo): Pr
 
   let excludedTypes: string[] | undefined;
   if (first.excludedTypes && second.excludedTypes) {
-    const shared = intersectValues(first.excludedTypes, second.excludedTypes) as string[];
+    const shared = intersectValues(first.excludedTypes, second.excludedTypes);
     excludedTypes = shared.length > 0 ? shared : undefined;
   }
 
@@ -344,11 +331,11 @@ const unionValueInfo = (first: PropertyValueInfo, second: PropertyValueInfo): Pr
     type = typeList(type).filter((candidate) => !rejectedTypes.has(candidate));
   }
 
-  const firstValues = first.hasConst ? [first.const] : first.enum;
-  const secondValues = second.hasConst ? [second.const] : second.enum;
-  let enumValues = firstValues && secondValues ? uniqueValues(Pact.concat(firstValues, secondValues)) : firstValues ?? secondValues;
+  const firstValues = valuesOf(first);
+  const secondValues = valuesOf(second);
+  let enumValues = firstValues && secondValues ? unique(Pact.concat(firstValues, secondValues)) : firstValues ?? secondValues;
 
-  let excluded: unknown[] | undefined;
+  let excluded: string[] | undefined;
   if (first.excluded && second.excluded) {
     const shared = intersectValues(first.excluded, second.excluded);
     excluded = shared.length > 0 ? shared : undefined;
@@ -359,18 +346,18 @@ const unionValueInfo = (first: PropertyValueInfo, second: PropertyValueInfo): Pr
   }
 
   const resultType = type && typeList(type).length === 1 ? typeList(type)[0] : type;
-  return { type: resultType, enum: enumValues, hasConst: false, excluded, excludedTypes, permitsAnyValue: namesTypeAndValues || undefined };
+  return { type: resultType, enum: enumValues, excluded, excludedTypes, permitsAnyValue: namesTypeAndValues || undefined };
 };
 
 const exactlyOneValueInfo = (infos: PropertyValueInfo[]): PropertyValueInfo => {
   const unioned = infos.reduce((merged, incoming) => unionValueInfo(merged, incoming));
   const counts = new Map<string, number>();
   for (const info of infos) {
-    for (const value of (info.hasConst ? [info.const] : info.enum) ?? []) {
-      counts.set(keyOf(value), (counts.get(keyOf(value)) ?? 0) + 1);
+    for (const value of valuesOf(info) ?? []) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
     }
   }
-  return { ...unioned, enum: unioned.enum?.filter((value) => counts.get(keyOf(value)) === 1) };
+  return { ...unioned, enum: unioned.enum?.filter((value) => counts.get(value) === 1) };
 };
 
 const collapseAllOfBranches = (branches: Alternative[], groupId: number | undefined): Alternative => {
@@ -387,20 +374,18 @@ const collapseAllOfBranches = (branches: Alternative[], groupId: number | undefi
 };
 
 // Read a not subschema for the values and types it forbids, in a single pass over the node.
-const resolveNegation = (ast: Record<string, unknown> | undefined, schemaUri: string): { excluded?: unknown[]; excludedTypes?: string[] } => {
+const resolveNegation = (ast: Record<string, unknown> | undefined, schemaUri: string): { excluded?: string[]; excludedTypes?: string[] } => {
   const node = ast?.[schemaUri];
   if (!Array.isArray(node)) {
     return {};
   }
-  const values: unknown[] = [];
+  const values: string[] = [];
   let excludedTypes: string[] | undefined;
   for (const [keywordId, , keywordValue] of node as [string, unknown, unknown][]) {
     if (keywordId === "https://json-schema.org/keyword/const") {
-      values.push(JSON.parse(keywordValue as string));
+      values.push(keywordValue as string);
     } else if (keywordId === "https://json-schema.org/keyword/enum") {
-      for (const entry of keywordValue as string[]) {
-        values.push(JSON.parse(entry));
-      }
+      values.push(...(keywordValue as string[]));
     } else if (keywordId === "https://json-schema.org/keyword/type") {
       excludedTypes = typeList(keywordValue as string | string[]);
     }
@@ -410,7 +395,7 @@ const resolveNegation = (ast: Record<string, unknown> | undefined, schemaUri: st
 
 const resolveValueInfo = (ast: Record<string, unknown> | undefined, schemaUri: string, visited: Set<string> = new Set()): PropertyValueInfo => {
   try {
-    let info: PropertyValueInfo = { hasConst: false };
+    let info: PropertyValueInfo = {};
     const node = ast?.[schemaUri];
     if (!Array.isArray(node) || visited.has(schemaUri)) {
       return info;
@@ -424,10 +409,9 @@ const resolveValueInfo = (ast: Record<string, unknown> | undefined, schemaUri: s
       if (keywordId === "https://json-schema.org/keyword/type") {
         info.type = keywordValue as string | string[];
       } else if (keywordId === "https://json-schema.org/keyword/enum") {
-        info.enum = (keywordValue as string[]).map((entry) => JSON.parse(entry));
+        info.enum = keywordValue as string[];
       } else if (keywordId === "https://json-schema.org/keyword/const") {
-        info.const = JSON.parse(keywordValue as string);
-        info.hasConst = true;
+        info.const = keywordValue as string;
       } else if (keywordId === "https://json-schema.org/keyword/not") {
         ({ excluded: info.excluded, excludedTypes: info.excludedTypes } = resolveNegation(ast, keywordValue as string));
       } else if (keywordId === "https://json-schema.org/keyword/allOf") {
@@ -449,9 +433,6 @@ const resolveValueInfo = (ast: Record<string, unknown> | undefined, schemaUri: s
     }
 
     info = dropContradictoryValues(info);
-    if (info.type && info.hasConst && !isAnyType(info.const, info.type)) {
-      info = { ...info, hasConst: false, const: undefined };
-    }
 
     if (nestedInfos.length > 0) {
       const combined = nestedInfos.reduce((merged, incoming) => intersectValueInfo(merged, incoming));
@@ -459,6 +440,6 @@ const resolveValueInfo = (ast: Record<string, unknown> | undefined, schemaUri: s
     }
     return info;
   } catch {
-    return { hasConst: false };
+    return {};
   }
 };

@@ -33,23 +33,23 @@ export class ValueCompletion implements CompletionsProvider {
 
     const completionItems: CompletionItem[] = [];
 
-    if (valueInfo.hasConst) {
+    if (valueInfo.const !== undefined) {
       completionItems.push({
-        label: JSON.stringify(valueInfo.const),
+        label: valueInfo.const,
         kind: CompletionItemKind.Value,
         insertTextFormat: InsertTextFormat.Snippet,
-        textEdit: { range, newText: " " + JSON.stringify(valueInfo.const) }
+        textEdit: { range, newText: " " + valueInfo.const }
       });
     } else if (valueInfo.enum) {
       completionItems.push(...valueInfo.enum.map((value) => ({
-        label: JSON.stringify(value),
+        label: value,
         kind: CompletionItemKind.EnumMember,
         insertTextFormat: InsertTextFormat.Snippet,
-        textEdit: { range, newText: " " + JSON.stringify(value) }
+        textEdit: { range, newText: " " + value }
       })));
     }
 
-    if ((!valueInfo.hasConst && !valueInfo.enum) || valueInfo.permitsAnyValue) {
+    if ((valueInfo.const === undefined && !valueInfo.enum) || valueInfo.permitsAnyValue) {
       completionItems.push(...this.genericTypeCompletions(valueInfo, range));
     }
 
@@ -58,7 +58,7 @@ export class ValueCompletion implements CompletionsProvider {
 
   private genericTypeCompletions(valueInfo: PropertyValueInfo, range: Range): CompletionItem[] {
     const types = new Set(Array.isArray(valueInfo.type) ? valueInfo.type : valueInfo.type ? [valueInfo.type] : ["string", "number", "boolean", "null", "object", "array", "integer"]);
-    const excluded = new Set((valueInfo.excluded ?? []).map((value) => JSON.stringify(value)));
+    const excluded = new Set(valueInfo.excluded ?? []);
 
     const completionItems: CompletionItem[] = [];
     for (const type of types) {
