@@ -1,4 +1,5 @@
 import { CompletionItemKind, InsertTextFormat, Range } from "vscode-languageserver";
+import * as Pact from "@hyperjump/pact";
 
 import type { CompletionItem, Position } from "vscode-languageserver";
 import type { JsonDocument } from "../models/JsonDocument.ts";
@@ -41,12 +42,12 @@ export class ValueCompletion implements CompletionsProvider {
         textEdit: { range, newText: " " + valueInfo.const }
       });
     } else if (valueInfo.enum) {
-      completionItems.push(...valueInfo.enum.map((value) => ({
+      completionItems.push(...Pact.map((value) => ({
         label: value,
         kind: CompletionItemKind.EnumMember,
         insertTextFormat: InsertTextFormat.Snippet,
         textEdit: { range, newText: " " + value }
-      })));
+      }), valueInfo.enum));
     }
 
     if ((valueInfo.const === undefined && !valueInfo.enum) || valueInfo.permitsAnyValue) {
@@ -57,8 +58,8 @@ export class ValueCompletion implements CompletionsProvider {
   }
 
   private genericTypeCompletions(valueInfo: PropertyValueInfo, range: Range): CompletionItem[] {
-    const types = new Set(Array.isArray(valueInfo.type) ? valueInfo.type : valueInfo.type ? [valueInfo.type] : ["string", "number", "boolean", "null", "object", "array", "integer"]);
-    const excluded = new Set(valueInfo.excluded ?? []);
+    const types = valueInfo.type ?? new Set(["string", "number", "boolean", "null", "object", "array", "integer"]);
+    const excluded = valueInfo.excluded ?? new Set<string>();
 
     const completionItems: CompletionItem[] = [];
     for (const type of types) {
