@@ -135,6 +135,36 @@ describe("DocumentColors", () => {
     ]);
   });
 
+  test("should return a color when the schema uses the 2019-09 dialect", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2019-09/schema",
+      "type": "object",
+      "properties": {
+        "color": { "type": "string", "format": "color-hex" }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "color": "#ff0000"
+    }`);
+    const uri = await client.openDocument("instance.json");
+
+    const result = await client.sendRequest(DocumentColorRequest.type, {
+      textDocument: { uri }
+    });
+
+    expect(result).toEqual([
+      {
+        color: { red: 1, green: 0, blue: 0, alpha: 1 },
+        range: {
+          start: { line: 2, character: 15 },
+          end: { line: 2, character: 24 }
+        }
+      }
+    ]);
+  });
+
   test("should not return a color when the schema doesn't declare format color-hex", async () => {
     fixtureSchemaUri = await client.writeDocument("schema.json", `{
       "$schema": "https://json-schema.org/draft/2020-12/schema",
