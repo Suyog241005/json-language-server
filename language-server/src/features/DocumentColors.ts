@@ -4,8 +4,8 @@ import type { Server } from "../services/Server.ts";
 import type { JsonDocuments } from "../services/JsonDocuments.ts";
 
 const FORMAT_KEYWORDS = new Set([
-  "https://json-schema.org/keyword/format",
   "https://json-schema.org/keyword/draft-2020-12/format",
+  "https://json-schema.org/keyword/draft-2020-12/format-assertion",
   "https://json-schema.org/keyword/draft-2019-09/format",
   "https://json-schema.org/keyword/draft-2019-09/format-assertion",
   "https://json-schema.org/keyword/draft-07/format",
