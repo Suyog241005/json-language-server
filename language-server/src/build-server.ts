@@ -43,7 +43,7 @@ export const buildServer = (connection: Connection): Server => {
     new SyntaxValidationDiagnosticsProvider(server),
     new SchemaRegistrationDiagnosticsProvider(registry, jsonSchema),
     new SchemaValidationDiagnosticsProvider(jsonSchema),
-    new DeprecatedDiagnosticsProvider(jsonSchema)
+    new DeprecatedDiagnosticsProvider(server, jsonSchema)
   ]);
 
   new Formatting(server, jsonDocuments);
