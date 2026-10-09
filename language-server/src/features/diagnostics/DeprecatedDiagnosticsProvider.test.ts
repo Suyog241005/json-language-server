@@ -223,3 +223,46 @@ describe("Deprecated Diagnostics", () => {
     await expect(diagnostics).resolves.toHaveLength(0);
   });
 });
+
+describe("Deprecated Diagnostics without deprecated tag support", () => {
+  let client: TestClient;
+
+  beforeEach(async () => {
+    client = new TestClient();
+    await client.start({
+      capabilities: {
+        textDocument: {
+          publishDiagnostics: {
+            tagSupport: { valueSet: [DiagnosticTag.Unnecessary] }
+          }
+        }
+      }
+    });
+  });
+
+  afterEach(async () => {
+    await client.stop();
+  });
+
+  test("deprecation isn't reported", async () => {
+    const fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "deprecated": true
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "name": "Alice"
+    }`);
+    const diagnostics = client.getDiagnostics("instance.json");
+    await client.openDocument("instance.json");
+
+    await expect(diagnostics).resolves.toHaveLength(0);
+  });
+});

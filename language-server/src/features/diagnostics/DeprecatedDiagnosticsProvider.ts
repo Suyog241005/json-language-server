@@ -8,19 +8,30 @@ import type { DiagnosticsProvider } from "./Diagnostics.ts";
 import type { Annotation } from "../../evaluation/Annotation.ts";
 import type { JsonDocument } from "../../models/JsonDocument.ts";
 import type { JsonSchema } from "../../services/JsonSchema.ts";
+import type { Server } from "../../services/Server.ts";
 
 export class DeprecatedDiagnosticsProvider implements DiagnosticsProvider {
   private jsonSchema: JsonSchema;
+  private hasDeprecatedTagCapability = false;
 
-  constructor(jsonSchema: JsonSchema) {
+  constructor(server: Server, jsonSchema: JsonSchema) {
     this.jsonSchema = jsonSchema;
+
+    server.onInitialize(({ capabilities }) => {
+      // Without the deprecated tag, the client can't strike through deprecated
+      // text, so the diagnostics would just be noise
+      const tagSupport = capabilities.textDocument?.publishDiagnostics?.tagSupport;
+      this.hasDeprecatedTagCapability = !!tagSupport?.valueSet.includes(DiagnosticTag.Deprecated);
+
+      return { capabilities: {} };
+    });
   }
 
   async getDiagnostics(jsonDocument: JsonDocument) {
     const diagnostics: Diagnostic[] = [];
 
     const ast = jsonDocument.findNodeAtPointer("");
-    if (!ast) {
+    if (!this.hasDeprecatedTagCapability || !ast) {
       return diagnostics;
     }
 
