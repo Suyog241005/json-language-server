@@ -1241,5 +1241,34 @@ describe("Property completions", () => {
       expect(completions[2].tags).toBeUndefined();
       expect(completions[3].tags).toBeUndefined();
     });
+
+    test("a property deprecated through $ref or allOf is deprecated", async () => {
+      fixtureSchemaUri = await client.writeDocument("schema.json", `{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "value": {
+            "properties": {
+              "foo": { "$ref": "#/$defs/deprecated" },
+              "bar": { "allOf": [{ "$ref": "#/$defs/deprecated" }] }
+            }
+          }
+        },
+        "$defs": {
+          "deprecated": { "deprecated": true }
+        }
+      }`);
+      const uri = await client.openDocument("instance.json");
+
+      const completions = await client.sendRequest(CompletionRequest.type, {
+        textDocument: { uri },
+        position: { line: 3, character: 11 }
+      }) as CompletionItem[];
+
+      expect(completions).toMatchObject([
+        { label: "foo", tags: [CompletionItemTag.Deprecated] },
+        { label: "bar", tags: [CompletionItemTag.Deprecated] }
+      ]);
+    });
   });
 });
