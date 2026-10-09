@@ -109,6 +109,71 @@ describe("Deprecated Diagnostics", () => {
     );
   });
 
+  test("a deprecated property is reported on its key even if its value is invalid", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "deprecated": true
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "name": 42
+    }`);
+    const diagnostics = client.getDiagnostics("instance.json");
+    await client.openDocument("instance.json");
+
+    // The invalid value is also reported as a validation error
+    const deprecatedDiagnostics = (await diagnostics)
+      .filter((diagnostic) => diagnostic.tags?.includes(DiagnosticTag.Deprecated));
+    expect(deprecatedDiagnostics).toEqual([
+      expect.objectContaining({
+        range: {
+          start: { line: 2, character: 6 },
+          end: { line: 2, character: 12 }
+        },
+        message: "Deprecated"
+      })
+    ]);
+  });
+
+  test("a deprecated nested property is reported on its key", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "outer": {
+          "type": "object",
+          "properties": {
+            "inner": { "deprecated": true }
+          }
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "outer": { "inner": 1 }
+    }`);
+    const diagnostics = client.getDiagnostics("instance.json");
+    await client.openDocument("instance.json");
+
+    await expect(diagnostics).resolves.toEqual([
+      expect.objectContaining({
+        range: {
+          start: { line: 2, character: 17 },
+          end: { line: 2, character: 24 }
+        },
+        message: "Deprecated"
+      })
+    ]);
+  });
+
   test("a deprecated array item is reported on the item", async () => {
     fixtureSchemaUri = await client.writeDocument("schema.json", `{
       "$schema": "https://json-schema.org/draft/2020-12/schema",
