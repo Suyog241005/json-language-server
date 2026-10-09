@@ -45,19 +45,34 @@ export class DeprecatedDiagnosticsProvider implements DiagnosticsProvider {
       // A deprecated property is marked on its key no matter what its value
       // is. A deprecated value is marked on the value.
       jsonDocument.walkNodes(ast, (node) => {
-        const pointer = jsonDocument.getPointerForNode(node);
-        const location = findDeprecated(plugin.getLocationAnnotations(pointer));
-        const value = findDeprecated(plugin.getValueAnnotations(pointer));
+        // The root and array items don't have a key, so a deprecated location
+        // is marked on the value
+        if (node.parent?.type !== "property") {
+          const pointer = jsonDocument.getPointerForNode(node);
+          const deprecated = findDeprecated(plugin.getLocationAnnotations(pointer))
+            ?? findDeprecated(plugin.getValueAnnotations(pointer));
+          if (deprecated) {
+            report(node, deprecated);
+          }
+        }
 
-        if (node.parent?.type === "property") {
-          if (location) {
-            report(node.parent.children![0], location);
+        // Properties are checked from the object because walkNodes doesn't
+        // visit properties that don't have a value yet
+        if (node.type === "object") {
+          for (const propertyNode of node.children!) {
+            const [keyNode, valueNode] = propertyNode.children!;
+            const pointer = jsonDocument.getPointerForNode(propertyNode);
+
+            const location = findDeprecated(plugin.getLocationAnnotations(pointer));
+            if (location) {
+              report(keyNode, location);
+            }
+
+            const value = valueNode && findDeprecated(plugin.getValueAnnotations(pointer));
+            if (value) {
+              report(valueNode, value);
+            }
           }
-          if (value) {
-            report(node, value);
-          }
-        } else if (location ?? value) {
-          report(node, (location ?? value)!);
         }
       });
     } catch {

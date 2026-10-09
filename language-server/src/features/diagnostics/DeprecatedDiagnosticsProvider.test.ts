@@ -77,6 +77,38 @@ describe("Deprecated Diagnostics", () => {
     ]);
   });
 
+  test("a deprecated property is reported on its key even if it doesn't have a value", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "deprecated": true
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "name":
+    }`);
+    const diagnostics = client.getDiagnostics("instance.json");
+    await client.openDocument("instance.json");
+
+    // The missing value is also reported as a syntax error
+    await expect(diagnostics).resolves.toContainEqual(
+      expect.objectContaining({
+        tags: [DiagnosticTag.Deprecated],
+        range: {
+          start: { line: 2, character: 6 },
+          end: { line: 2, character: 12 }
+        },
+        message: "Deprecated"
+      })
+    );
+  });
+
   test("a deprecated array item is reported on the item", async () => {
     fixtureSchemaUri = await client.writeDocument("schema.json", `{
       "$schema": "https://json-schema.org/draft/2020-12/schema",
