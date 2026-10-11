@@ -1,7 +1,7 @@
-import { CompletionItemKind, CompletionItemTag, InsertTextFormat, MarkupKind } from "vscode-languageserver";
+import { CompletionItemKind, CompletionItemTag, InsertTextFormat } from "vscode-languageserver";
 import { JsonDocument } from "../../models/JsonDocument.ts";
 import { LspEvaluationPlugin } from "../../evaluation/LspEvaluationPlugin.ts";
-import { findDeprecated } from "../../evaluation/Annotation.ts";
+import { deprecationDocumentation } from "./Completions.ts";
 
 import type { CompletionContext, CompletionsProvider } from "./Completions.ts";
 import type { CompletionItem } from "vscode-languageserver";
@@ -48,13 +48,10 @@ export class ValueCompletionsProvider implements CompletionsProvider {
         };
 
         // A value is deprecated only because of what it is, not because its location is
-        const deprecated = findDeprecated(completion.annotations);
-        if (deprecated) {
+        const deprecated = completion.annotations.filter((annotation) => annotation.deprecated());
+        if (deprecated.length > 0) {
           completionItem.tags = [CompletionItemTag.Deprecated];
-          const message = deprecated.markdownDeprecationMessage();
-          if (message) {
-            completionItem.documentation = { kind: MarkupKind.Markdown, value: message };
-          }
+          completionItem.documentation = deprecationDocumentation(deprecated);
         }
 
         completions.push(completionItem);

@@ -1,10 +1,12 @@
+import { MarkupKind } from "vscode-languageserver";
 import * as JsonPointer from "@hyperjump/json-pointer";
 import * as Pact from "@hyperjump/pact";
 import { JsonDocuments } from "../../services/JsonDocuments.ts";
 import { JsonDocument } from "../../models/JsonDocument.ts";
 
-import type { CompletionItem, Position, ServerCapabilities, Range } from "vscode-languageserver";
+import type { CompletionItem, MarkupContent, Position, ServerCapabilities, Range } from "vscode-languageserver";
 import type { Node } from "jsonc-parser";
+import type { Annotation } from "../../evaluation/Annotation.ts";
 import type { JsonSchema } from "../../services/JsonSchema.ts";
 import type { Server } from "../../services/Server.ts";
 
@@ -112,4 +114,22 @@ const getCompletionContext = (jsonDocument: JsonDocument, position: Position): C
   }
 
   return { node, instanceLocation, range, position };
+};
+
+// The deprecation messages of every annotation that deprecates a completion.
+// Markdown if any of them is markdown, otherwise plain text.
+export const deprecationDocumentation = (deprecated: Annotation[]): MarkupContent | undefined => {
+  const messages = Pact.pipe(
+    deprecated,
+    Pact.map((annotation) => annotation.markdownDeprecationMessage() ?? annotation.deprecationMessage()),
+    Pact.filter((message) => message !== undefined),
+    Pact.collectArray
+  );
+
+  if (messages.length === 0) {
+    return;
+  }
+
+  const isMarkdown = deprecated.some((annotation) => annotation.markdownDeprecationMessage() !== undefined);
+  return { kind: isMarkdown ? MarkupKind.Markdown : MarkupKind.PlainText, value: messages.join("\n\n") };
 };

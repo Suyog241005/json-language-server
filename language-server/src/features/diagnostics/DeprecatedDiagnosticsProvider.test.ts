@@ -77,6 +77,33 @@ describe("Deprecated Diagnostics", () => {
     ]);
   });
 
+  test("messages from every schema that deprecates a location are combined", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "allOf": [
+            { "deprecationMessage": "One." },
+            { "deprecated": true },
+            { "deprecationMessage": "Two." }
+          ]
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "name": "Alice"
+    }`);
+    const diagnostics = client.getDiagnostics("instance.json");
+    await client.openDocument("instance.json");
+
+    await expect(diagnostics).resolves.toEqual([
+      expect.objectContaining({ message: "One.\nTwo." })
+    ]);
+  });
+
   test("a deprecated property is reported on its key even if it doesn't have a value", async () => {
     fixtureSchemaUri = await client.writeDocument("schema.json", `{
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -171,6 +198,31 @@ describe("Deprecated Diagnostics", () => {
         },
         message: "Deprecated"
       })
+    ]);
+  });
+
+  test("deprecated items are reported on each item", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "tags": {
+          "type": "array",
+          "items": { "deprecated": true }
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "tags": ["a", "b"]
+    }`);
+    const diagnostics = client.getDiagnostics("instance.json");
+    await client.openDocument("instance.json");
+
+    await expect(diagnostics).resolves.toEqual([
+      expect.objectContaining({ range: { start: { line: 2, character: 15 }, end: { line: 2, character: 18 } } }),
+      expect.objectContaining({ range: { start: { line: 2, character: 20 }, end: { line: 2, character: 23 } } })
     ]);
   });
 

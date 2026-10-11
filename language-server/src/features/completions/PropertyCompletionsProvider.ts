@@ -1,8 +1,8 @@
-import { CompletionItemKind, CompletionItemTag, MarkupKind } from "vscode-languageserver";
+import { CompletionItemKind, CompletionItemTag } from "vscode-languageserver";
 import * as JsonPointer from "@hyperjump/json-pointer";
 import * as Pact from "@hyperjump/pact";
 import { LspEvaluationPlugin } from "../../evaluation/LspEvaluationPlugin.ts";
-import { findDeprecated } from "../../evaluation/Annotation.ts";
+import { deprecationDocumentation } from "./Completions.ts";
 
 import type { CompletionItem } from "vscode-languageserver";
 import type { CompletionContext, CompletionsProvider } from "./Completions.ts";
@@ -61,13 +61,10 @@ export class PropertyCompletionsProvider implements CompletionsProvider {
 
         // A property is deprecated only if it's deprecated no matter what its value is
         const propertyLocation = JsonPointer.append(propertyName, instanceLocation);
-        const deprecated = findDeprecated(plugin.getLocationAnnotations(propertyLocation));
-        if (deprecated) {
+        const deprecated = plugin.getLocationAnnotations(propertyLocation).filter((annotation) => annotation.deprecated());
+        if (deprecated.length > 0) {
           completionItem.tags = [CompletionItemTag.Deprecated];
-          const message = deprecated.markdownDeprecationMessage();
-          if (message) {
-            completionItem.documentation = { kind: MarkupKind.Markdown, value: message };
-          }
+          completionItem.documentation = deprecationDocumentation(deprecated);
         }
 
         completionItems.push(completionItem);

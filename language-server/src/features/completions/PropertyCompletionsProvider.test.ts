@@ -1257,7 +1257,7 @@ describe("Property completions", () => {
       }) as CompletionItem[];
 
       expect(completions).toMatchObject([
-        { label: "name", tags: [CompletionItemTag.Deprecated], documentation: { kind: "markdown", value: "Use fullName instead." } },
+        { label: "name", tags: [CompletionItemTag.Deprecated], documentation: { kind: "plaintext", value: "Use fullName instead." } },
         { label: "age", tags: [CompletionItemTag.Deprecated] },
         { label: "bar" },
         { label: "fullName" }
@@ -1303,6 +1303,88 @@ describe("Property completions", () => {
       expect(completions).toMatchObject([
         { label: "foo", tags: [CompletionItemTag.Deprecated] },
         { label: "bar", tags: [CompletionItemTag.Deprecated] }
+      ]);
+    });
+
+    test("a markdownDeprecationMessage is markdown documentation", async () => {
+      fixtureSchemaUri = await client.writeDocument("schema.json", `{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "value": {
+            "properties": {
+              "name": { "markdownDeprecationMessage": "Use **fullName** instead." }
+            }
+          }
+        }
+      }`);
+      const uri = await client.openDocument("instance.json");
+
+      const completions = await client.sendRequest(CompletionRequest.type, {
+        textDocument: { uri },
+        position: { line: 3, character: 11 }
+      }) as CompletionItem[];
+
+      expect(completions).toMatchObject([
+        { label: "name", tags: [CompletionItemTag.Deprecated], documentation: { kind: "markdown", value: "Use **fullName** instead." } }
+      ]);
+    });
+
+    test("messages from every schema that deprecates a property are combined", async () => {
+      fixtureSchemaUri = await client.writeDocument("schema.json", `{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "value": {
+            "properties": {
+              "name": {
+                "allOf": [
+                  { "deprecationMessage": "One." },
+                  { "deprecationMessage": "Two." }
+                ]
+              }
+            }
+          }
+        }
+      }`);
+      const uri = await client.openDocument("instance.json");
+
+      const completions = await client.sendRequest(CompletionRequest.type, {
+        textDocument: { uri },
+        position: { line: 3, character: 11 }
+      }) as CompletionItem[];
+
+      expect(completions).toMatchObject([
+        { label: "name", tags: [CompletionItemTag.Deprecated], documentation: { kind: "plaintext", value: "One.\n\nTwo." } }
+      ]);
+    });
+
+    test("documentation is markdown if any of the messages is markdown", async () => {
+      fixtureSchemaUri = await client.writeDocument("schema.json", `{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "value": {
+            "properties": {
+              "name": {
+                "allOf": [
+                  { "deprecationMessage": "One." },
+                  { "markdownDeprecationMessage": "**Two.**" }
+                ]
+              }
+            }
+          }
+        }
+      }`);
+      const uri = await client.openDocument("instance.json");
+
+      const completions = await client.sendRequest(CompletionRequest.type, {
+        textDocument: { uri },
+        position: { line: 3, character: 11 }
+      }) as CompletionItem[];
+
+      expect(completions).toMatchObject([
+        { label: "name", documentation: { kind: "markdown", value: "One.\n\n**Two.**" } }
       ]);
     });
   });

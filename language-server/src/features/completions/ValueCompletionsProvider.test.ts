@@ -4446,7 +4446,7 @@ describe("Value Completions", () => {
       }) as CompletionItem[];
 
       expect(completions).toMatchObject([
-        { label: `"a"`, tags: [CompletionItemTag.Deprecated], documentation: { kind: "markdown", value: "Use b." } },
+        { label: `"a"`, tags: [CompletionItemTag.Deprecated], documentation: { kind: "plaintext", value: "Use b." } },
         { label: `"b"` }
       ]);
       expect(completions[1].tags).toBeUndefined();

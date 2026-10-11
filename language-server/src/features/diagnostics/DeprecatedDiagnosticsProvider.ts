@@ -1,6 +1,6 @@
 import { DiagnosticSeverity, DiagnosticTag } from "vscode-languageserver";
+import * as Pact from "@hyperjump/pact";
 import { LspEvaluationPlugin } from "../../evaluation/LspEvaluationPlugin.ts";
-import { findDeprecated } from "../../evaluation/Annotation.ts";
 
 import type { Diagnostic } from "vscode-languageserver";
 import type { Node } from "jsonc-parser";
@@ -43,12 +43,27 @@ export class DeprecatedDiagnosticsProvider implements DiagnosticsProvider {
 
       const plugin = LspEvaluationPlugin.from(result);
 
-      const report = (node: Node, annotation: Annotation) => {
+      const getDeprecated = (annotations: Annotation[]) => annotations.filter((annotation) => annotation.deprecated());
+
+      // Every schema that deprecates the node contributes its message. Like
+      // VS Code, only the plain text message is used for diagnostics.
+      const report = (node: Node, deprecated: Annotation[]) => {
+        if (deprecated.length === 0) {
+          return;
+        }
+
+        const messages = Pact.pipe(
+          deprecated,
+          Pact.map((annotation) => annotation.deprecationMessage()),
+          Pact.filter((message) => message !== undefined),
+          Pact.collectArray
+        );
+
         diagnostics.push({
           severity: DiagnosticSeverity.Warning,
           tags: [DiagnosticTag.Deprecated],
           range: jsonDocument.rangeAt(node.offset, node.offset + node.length),
-          message: annotation.deprecationMessage() ?? "Deprecated",
+          message: messages.length > 0 ? messages.join("\n") : "Deprecated",
           source: "hyperjump-json-language-server"
         });
       };
@@ -60,11 +75,10 @@ export class DeprecatedDiagnosticsProvider implements DiagnosticsProvider {
         // is marked on the value
         if (node.parent?.type !== "property") {
           const pointer = jsonDocument.getPointerForNode(node);
-          const deprecated = findDeprecated(plugin.getLocationAnnotations(pointer))
-            ?? findDeprecated(plugin.getValueAnnotations(pointer));
-          if (deprecated) {
-            report(node, deprecated);
-          }
+          report(node, [
+            ...getDeprecated(plugin.getLocationAnnotations(pointer)),
+            ...getDeprecated(plugin.getValueAnnotations(pointer))
+          ]);
         }
 
         // Properties are checked from the object because walkNodes doesn't
@@ -74,14 +88,9 @@ export class DeprecatedDiagnosticsProvider implements DiagnosticsProvider {
             const [keyNode, valueNode] = propertyNode.children!;
             const pointer = jsonDocument.getPointerForNode(propertyNode);
 
-            const location = findDeprecated(plugin.getLocationAnnotations(pointer));
-            if (location) {
-              report(keyNode, location);
-            }
-
-            const value = valueNode && findDeprecated(plugin.getValueAnnotations(pointer));
-            if (value) {
-              report(valueNode, value);
+            report(keyNode, getDeprecated(plugin.getLocationAnnotations(pointer)));
+            if (valueNode) {
+              report(valueNode, getDeprecated(plugin.getValueAnnotations(pointer)));
             }
           }
         }
