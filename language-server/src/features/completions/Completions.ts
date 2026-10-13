@@ -127,11 +127,16 @@ export const tagDeprecated = (completionItem: CompletionItem, annotations: Annot
 };
 
 // The deprecation messages of every annotation that deprecates a completion.
-// Markdown if any of them is markdown, otherwise plain text.
+// Markdown if any of them is markdown, otherwise plain text. Plain text
+// messages are escaped when they're combined with markdown ones.
 const deprecationDocumentation = (deprecated: Annotation[]): MarkupContent | undefined => {
+  const isMarkdown = deprecated.some((annotation) => annotation.markdownDeprecationMessage() !== undefined);
   const messages = Pact.pipe(
     deprecated,
-    Pact.map((annotation) => annotation.markdownDeprecationMessage() ?? annotation.deprecationMessage()),
+    Pact.map((annotation) => {
+      const plainMessage = annotation.deprecationMessage();
+      return annotation.markdownDeprecationMessage() ?? (isMarkdown && plainMessage ? escapeMarkdown(plainMessage) : plainMessage);
+    }),
     Pact.filter((message) => message !== undefined),
     Pact.collectArray
   );
@@ -140,6 +145,8 @@ const deprecationDocumentation = (deprecated: Annotation[]): MarkupContent | und
     return;
   }
 
-  const isMarkdown = deprecated.some((annotation) => annotation.markdownDeprecationMessage() !== undefined);
   return { kind: isMarkdown ? MarkupKind.Markdown : MarkupKind.PlainText, value: messages.join("\n\n") };
 };
+
+// Any ASCII punctuation can be escaped, so escaping all of it is always safe
+const escapeMarkdown = (text: string) => text.replace(/[!-/:-@[-`{-~]/g, "\\$&");

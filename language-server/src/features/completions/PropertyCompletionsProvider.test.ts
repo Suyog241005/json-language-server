@@ -1359,7 +1359,7 @@ describe("Property completions", () => {
       ]);
     });
 
-    test("documentation is markdown if any of the messages is markdown", async () => {
+    test("documentation is markdown with plain text messages escaped if any of the messages is markdown", async () => {
       fixtureSchemaUri = await client.writeDocument("schema.json", `{
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1368,7 +1368,7 @@ describe("Property completions", () => {
             "properties": {
               "name": {
                 "allOf": [
-                  { "deprecationMessage": "One." },
+                  { "deprecationMessage": "Use *new* <name>." },
                   { "markdownDeprecationMessage": "**Two.**" }
                 ]
               }
@@ -1384,7 +1384,7 @@ describe("Property completions", () => {
       }) as CompletionItem[];
 
       expect(completions).toMatchObject([
-        { label: "name", documentation: { kind: "markdown", value: "One.\n\n**Two.**" } }
+        { label: "name", documentation: { kind: "markdown", value: "Use \\*new\\* \\<name\\>\\.\n\n**Two.**" } }
       ]);
     });
   });
