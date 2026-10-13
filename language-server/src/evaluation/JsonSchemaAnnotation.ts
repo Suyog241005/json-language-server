@@ -36,8 +36,11 @@ export class JsonSchemaAnnotation {
     return this.keywords["https://json-schema.org/keyword/description"] as string | undefined;
   }
 
+  // Dialects before 2019-09 don't have the deprecated keyword, but it's
+  // commonly used with them anyway
   deprecated(): boolean {
-    return this.keywords["https://json-schema.org/keyword/deprecated"] === true;
+    return (this.keywords["https://json-schema.org/keyword/deprecated"]
+      ?? this.keywords["https://json-schema.org/keyword/unknown#deprecated"]) === true;
   }
 
   formats(): unknown[] {

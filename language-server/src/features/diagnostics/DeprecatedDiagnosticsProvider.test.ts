@@ -77,6 +77,33 @@ describe("Deprecated Diagnostics", () => {
     ]);
   });
 
+  test("the deprecated keyword is used in dialects that don't have it", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "deprecated": true
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "name": "Alice"
+    }`);
+    const diagnostics = client.getDiagnostics("instance.json");
+    await client.openDocument("instance.json");
+
+    await expect(diagnostics).resolves.toEqual([
+      expect.objectContaining({
+        tags: [DiagnosticTag.Deprecated],
+        message: "Deprecated"
+      })
+    ]);
+  });
+
   test("messages from every schema that deprecates a location are combined", async () => {
     fixtureSchemaUri = await client.writeDocument("schema.json", `{
       "$schema": "https://json-schema.org/draft/2020-12/schema",
