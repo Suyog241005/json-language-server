@@ -1,4 +1,5 @@
 import { DiagnosticSeverity, DiagnosticTag } from "vscode-languageserver";
+import * as JsonPointer from "@hyperjump/json-pointer";
 import * as Pact from "@hyperjump/pact";
 import { LspEvaluationPlugin } from "../../evaluation/LspEvaluationPlugin.ts";
 
@@ -70,11 +71,10 @@ export class DeprecatedDiagnosticsProvider implements DiagnosticsProvider {
 
       // A deprecated property is marked on its key no matter what its value
       // is. A deprecated value is marked on the value.
-      jsonDocument.walkNodes(ast, (node) => {
+      jsonDocument.walkNodes(ast, (node, pointer) => {
         // The root and array items don't have a key, so a deprecated location
         // is marked on the value
         if (node.parent?.type !== "property") {
-          const pointer = jsonDocument.getPointerForNode(node);
           report(node, [
             ...getDeprecated(plugin.getLocationAnnotations(pointer)),
             ...getDeprecated(plugin.getValueAnnotations(pointer))
@@ -86,11 +86,11 @@ export class DeprecatedDiagnosticsProvider implements DiagnosticsProvider {
         if (node.type === "object") {
           for (const propertyNode of node.children!) {
             const [keyNode, valueNode] = propertyNode.children!;
-            const pointer = jsonDocument.getPointerForNode(propertyNode);
+            const propertyPointer = JsonPointer.append(keyNode.value, pointer);
 
-            report(keyNode, getDeprecated(plugin.getLocationAnnotations(pointer)));
+            report(keyNode, getDeprecated(plugin.getLocationAnnotations(propertyPointer)));
             if (valueNode) {
-              report(valueNode, getDeprecated(plugin.getValueAnnotations(pointer)));
+              report(valueNode, getDeprecated(plugin.getValueAnnotations(propertyPointer)));
             }
           }
         }
