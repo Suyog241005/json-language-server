@@ -1,4 +1,4 @@
-import { MarkupKind } from "vscode-languageserver";
+import { CompletionItemTag, MarkupKind } from "vscode-languageserver";
 import * as JsonPointer from "@hyperjump/json-pointer";
 import * as Pact from "@hyperjump/pact";
 import { JsonDocuments } from "../../services/JsonDocuments.ts";
@@ -116,9 +116,19 @@ const getCompletionContext = (jsonDocument: JsonDocument, position: Position): C
   return { node, instanceLocation, range, position };
 };
 
+// Marks a completion as deprecated if any of the annotations deprecate it,
+// with their messages as its documentation
+export const tagDeprecated = (completionItem: CompletionItem, annotations: Annotation[]) => {
+  const deprecated = annotations.filter((annotation) => annotation.deprecated());
+  if (deprecated.length > 0) {
+    completionItem.tags = [CompletionItemTag.Deprecated];
+    completionItem.documentation = deprecationDocumentation(deprecated);
+  }
+};
+
 // The deprecation messages of every annotation that deprecates a completion.
 // Markdown if any of them is markdown, otherwise plain text.
-export const deprecationDocumentation = (deprecated: Annotation[]): MarkupContent | undefined => {
+const deprecationDocumentation = (deprecated: Annotation[]): MarkupContent | undefined => {
   const messages = Pact.pipe(
     deprecated,
     Pact.map((annotation) => annotation.markdownDeprecationMessage() ?? annotation.deprecationMessage()),
