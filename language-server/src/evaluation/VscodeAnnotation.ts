@@ -28,14 +28,18 @@ export const VscodeAnnotation = <T extends Constructor<JsonSchemaAnnotation>>(Ba
       || this.markdownDeprecationMessage() !== undefined;
   }
 
+  // An empty message is the same as no message
   deprecationMessage(): string | undefined {
-    return (this.keywords["https://microsoft.com/keyword/deprecationMessage"]
-      ?? this.keywords["https://json-schema.org/keyword/unknown#deprecationMessage"]) as string | undefined;
+    const message = this.keywords["https://microsoft.com/keyword/deprecationMessage"]
+      ?? this.keywords["https://json-schema.org/keyword/unknown#deprecationMessage"];
+    return (message || undefined) as string | undefined;
   }
 
+  // An empty message is the same as no message
   markdownDeprecationMessage(): string | undefined {
-    return (this.keywords["https://microsoft.com/keyword/markdownDeprecationMessage"]
-      ?? this.keywords["https://json-schema.org/keyword/unknown#markdownDeprecationMessage"]) as string | undefined;
+    const message = this.keywords["https://microsoft.com/keyword/markdownDeprecationMessage"]
+      ?? this.keywords["https://json-schema.org/keyword/unknown#markdownDeprecationMessage"];
+    return (message || undefined) as string | undefined;
   }
 
   defaultSnippets(): DefaultSnippet[] {
