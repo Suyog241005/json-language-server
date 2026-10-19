@@ -22,15 +22,6 @@ export type CompletionContext = {
   position: Position;
 };
 
-export const getDocumentation = (annotations: Annotation[]): MarkupContent | undefined => {
-  const lines = describeAnnotations(annotations);
-  if (lines.length === 0) {
-    return;
-  }
-
-  return { kind: MarkupKind.Markdown, value: lines.join("\n\n") };
-};
-
 export class Completions {
   private jsonDocuments: JsonDocuments;
   private providers: CompletionsProvider[];
@@ -126,21 +117,28 @@ const getCompletionContext = (jsonDocument: JsonDocument, position: Position): C
   return { node, instanceLocation, range, position };
 };
 
-// Marks a completion as deprecated if any of the annotations deprecate it,
-// with their messages as its documentation
-export const tagDeprecated = (completionItem: CompletionItem, annotations: Annotation[]) => {
+// Describes a completion with its annotations. It's marked as deprecated if any
+// of them deprecate it, and its documentation leads with their deprecation
+// messages followed by the titles and descriptions.
+export const describeCompletion = (completionItem: CompletionItem, annotations: Annotation[]) => {
   const deprecated = annotations.filter((annotation) => annotation.deprecated());
   if (deprecated.length > 0) {
     completionItem.tags = [CompletionItemTag.Deprecated];
-    completionItem.documentation = deprecationDocumentation(deprecated);
+  }
+
+  const documentation = getDocumentation(deprecated, describeAnnotations(annotations));
+  if (documentation) {
+    completionItem.documentation = documentation;
   }
 };
 
-// The deprecation messages of every annotation that deprecates a completion.
-// Markdown if any of them is markdown, otherwise plain text. Plain text
-// messages are escaped when they're combined with markdown ones.
-const deprecationDocumentation = (deprecated: Annotation[]): MarkupContent | undefined => {
-  const isMarkdown = deprecated.some((annotation) => annotation.markdownDeprecationMessage() !== undefined);
+// The deprecation messages of every annotation that deprecates a completion,
+// followed by the titles and descriptions. Markdown if any of them is markdown,
+// otherwise plain text. Plain text messages are escaped when they're combined
+// with markdown.
+const getDocumentation = (deprecated: Annotation[], descriptions: string[]): MarkupContent | undefined => {
+  const isMarkdown = descriptions.length > 0
+    || deprecated.some((annotation) => annotation.markdownDeprecationMessage() !== undefined);
   const messages = Pact.pipe(
     deprecated,
     Pact.map((annotation) => {
@@ -151,11 +149,12 @@ const deprecationDocumentation = (deprecated: Annotation[]): MarkupContent | und
     Pact.collectArray
   );
 
-  if (messages.length === 0) {
+  const lines = [...messages, ...descriptions];
+  if (lines.length === 0) {
     return;
   }
 
-  return { kind: isMarkdown ? MarkupKind.Markdown : MarkupKind.PlainText, value: messages.join("\n\n") };
+  return { kind: isMarkdown ? MarkupKind.Markdown : MarkupKind.PlainText, value: lines.join("\n\n") };
 };
 
 // Any ASCII punctuation can be escaped, so escaping all of it is always safe

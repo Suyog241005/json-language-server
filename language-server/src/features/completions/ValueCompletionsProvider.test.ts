@@ -4665,6 +4665,38 @@ describe("Value Completions", () => {
       expect(completions[1].tags).toBeUndefined();
     });
 
+    test("documentation leads with the deprecation message followed by the value's title and description", async () => {
+      const fixtureSchemaUri = await client.writeDocument("schema.json", `{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "value": {
+            "title": "Value",
+            "anyOf": [
+              { "const": "a", "title": "A", "description": "The first", "markdownDeprecationMessage": "Use **b**." },
+              { "const": "b", "title": "B" }
+            ]
+          }
+        }
+      }`);
+
+      await client.writeDocument("instance.json", `{
+        "$schema": "${fixtureSchemaUri}",
+        "value":
+      }`);
+      const uri = await client.openDocument("instance.json");
+
+      const completions = await client.sendRequest(CompletionRequest.type, {
+        textDocument: { uri },
+        position: { line: 2, character: 16 }
+      }) as CompletionItem[];
+
+      expect(completions).toMatchObject([
+        { label: `"a"`, tags: [CompletionItemTag.Deprecated], documentation: { kind: "markdown", value: "Use **b**.\n\n**A**\n\nThe first" } },
+        { label: `"b"`, documentation: { kind: "markdown", value: "**B**" } }
+      ]);
+    });
+
     test("values of a deprecated location aren't deprecated themselves", async () => {
       const fixtureSchemaUri = await client.writeDocument("schema.json", `{
         "$schema": "https://json-schema.org/draft/2020-12/schema",

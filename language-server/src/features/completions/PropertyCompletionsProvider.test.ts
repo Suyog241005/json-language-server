@@ -1572,6 +1572,86 @@ describe("Property completions", () => {
         { label: "name", documentation: { kind: "markdown", value: "Use \\*new\\* \\<name\\>\\.\n\n**Two.**" } }
       ]);
     });
+
+    test("documentation leads with the deprecation message followed by the title and description", async () => {
+      fixtureSchemaUri = await client.writeDocument("schema.json", `{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "value": {
+            "properties": {
+              "name": {
+                "title": "Name",
+                "description": "The name of the thing",
+                "markdownDeprecationMessage": "Use **fullName** instead."
+              }
+            }
+          }
+        }
+      }`);
+      const uri = await client.openDocument("instance.json");
+
+      const completions = await client.sendRequest(CompletionRequest.type, {
+        textDocument: { uri },
+        position: { line: 3, character: 11 }
+      }) as CompletionItem[];
+
+      expect(completions).toMatchObject([
+        {
+          label: "name",
+          tags: [CompletionItemTag.Deprecated],
+          documentation: { kind: "markdown", value: "Use **fullName** instead.\n\n**Name**\n\nThe name of the thing" }
+        }
+      ]);
+    });
+
+    test("a plain text deprecation message is escaped when it's combined with a title or description", async () => {
+      fixtureSchemaUri = await client.writeDocument("schema.json", `{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "value": {
+            "properties": {
+              "name": { "title": "Name", "deprecationMessage": "Use *fullName*." }
+            }
+          }
+        }
+      }`);
+      const uri = await client.openDocument("instance.json");
+
+      const completions = await client.sendRequest(CompletionRequest.type, {
+        textDocument: { uri },
+        position: { line: 3, character: 11 }
+      }) as CompletionItem[];
+
+      expect(completions).toMatchObject([
+        { label: "name", tags: [CompletionItemTag.Deprecated], documentation: { kind: "markdown", value: "Use \\*fullName\\*\\.\n\n**Name**" } }
+      ]);
+    });
+
+    test("a deprecated property without a message is documented with its title and description", async () => {
+      fixtureSchemaUri = await client.writeDocument("schema.json", `{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "value": {
+            "properties": {
+              "name": { "title": "Name", "deprecated": true }
+            }
+          }
+        }
+      }`);
+      const uri = await client.openDocument("instance.json");
+
+      const completions = await client.sendRequest(CompletionRequest.type, {
+        textDocument: { uri },
+        position: { line: 3, character: 11 }
+      }) as CompletionItem[];
+
+      expect(completions).toMatchObject([
+        { label: "name", tags: [CompletionItemTag.Deprecated], documentation: { kind: "markdown", value: "**Name**" } }
+      ]);
+    });
   });
 
   describe("doNotSuggest", () => {
