@@ -4495,6 +4495,36 @@ describe("Value Completions", () => {
     ]);
   });
 
+  test("completion is documented with the annotations of a schema applied twice only once", async () => {
+    const fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "value": {
+          "anyOf": [{ "$ref": "#/$defs/red" }, { "$ref": "#/$defs/red" }]
+        }
+      },
+      "$defs": {
+        "red": { "const": "red", "title": "Red" }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "value":
+    }`);
+    const uri = await client.openDocument("instance.json");
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 14 }
+    });
+
+    expect(completions).toMatchObject([
+      { label: `"red"`, documentation: { kind: MarkupKind.Markdown, value: "**Red**" } }
+    ]);
+  });
+
   test("completion is not documented with the annotations of its location", async () => {
     const fixtureSchemaUri = await client.writeDocument("schema.json", `{
       "$schema": "https://json-schema.org/draft/2020-12/schema",

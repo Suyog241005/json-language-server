@@ -26,6 +26,11 @@ type Completions = Record<string, LazyValueSet>;
 export type Completion = WithAnnotations<ValueEntry> | WithAnnotations<TypeEntry>;
 type WithAnnotations<T extends { annotations: AnnotationRecord[] }> = Omit<T, "annotations"> & { annotations: Annotation[] };
 
+type OwnAnnotations = {
+  annotation: AnnotationRecord;
+  firstAnnotationNode: Node<unknown> | undefined;
+};
+
 type SchemaResult = {
   pointer: string;
   annotations: RecordedAnnotations;
@@ -33,6 +38,7 @@ type SchemaResult = {
 };
 
 type LspContext = ValidationContext & {
+  schemaLocation?: string;
   ownAnnotations?: AnnotationRecord;
   schemaAnnotations?: RecordedAnnotations;
   completions?: Completions;
@@ -54,6 +60,14 @@ export class LspEvaluationPlugin implements EvaluationPlugin<LspContext> {
   private incompleteLocations: Set<string>;
   private subschemaTracker = new SubschemaTracker<SchemaResult>();
 
+  // A schema that's applied more than once to the same value, such as one
+  // that's referenced twice, contributes the same annotations every time. Each
+  // schema has one record so its annotations are only used once. They're keyed
+  // by instance location and then schema location. Completions are built
+  // without an instance, so they're keyed only by schema location.
+  private ownAnnotationRecords: Record<string, Record<string, AnnotationRecord>> = Object.create(null);
+  private completionAnnotations = new Map<string, OwnAnnotations>();
+
   constructor(incompleteLocations: Set<string> = new Set()) {
     this.incompleteLocations = incompleteLocations;
   }
@@ -67,7 +81,8 @@ export class LspEvaluationPlugin implements EvaluationPlugin<LspContext> {
     return plugin as LspEvaluationPlugin;
   }
 
-  beforeSchema(_url: string, _instance: JsonNode, context: LspContext): void {
+  beforeSchema(url: string, _instance: JsonNode, context: LspContext): void {
+    context.schemaLocation = url;
     context.ownAnnotations = undefined;
     context.schemaAnnotations = Object.create(null);
     context.completions = Object.create(null);
@@ -244,7 +259,8 @@ export class LspEvaluationPlugin implements EvaluationPlugin<LspContext> {
     // the value is being edited.
     if (keyword.annotation) {
       if (!schemaContext.ownAnnotations) {
-        schemaContext.ownAnnotations = {};
+        this.ownAnnotationRecords[instance.pointer] ??= Object.create(null);
+        schemaContext.ownAnnotations = this.ownAnnotationRecords[instance.pointer][schemaContext.schemaLocation!] ??= {};
         appendAnnotations(schemaContext.schemaAnnotations!, {
           [instance.pointer]: [{ kind: "location", annotation: schemaContext.ownAnnotations }]
         });
@@ -435,13 +451,7 @@ export class LspEvaluationPlugin implements EvaluationPlugin<LspContext> {
 
     // The schema's own annotations go where its first annotation keyword is so
     // annotations are in the order they appear in the schema
-    const annotation: AnnotationRecord = {};
-    let firstAnnotationNode: Node<unknown> | undefined;
-    for (const node of nodes) {
-      if (addKeywordAnnotation(annotation, node, context)) {
-        firstAnnotationNode ??= node;
-      }
-    }
+    const { annotation, firstAnnotationNode } = this.buildOwnAnnotations(schemaLocation, nodes, context);
 
     // Most keywords don't constrain the value, so they're skipped rather than
     // intersected as an unconstrained set. Every intersection creates a new set,
@@ -459,6 +469,21 @@ export class LspEvaluationPlugin implements EvaluationPlugin<LspContext> {
     inProgress.delete(schemaLocation);
 
     return completions ?? JsonValueSet.any();
+  }
+
+  private buildOwnAnnotations(schemaLocation: string, nodes: Node<unknown>[], context: LspContext): OwnAnnotations {
+    let ownAnnotations = this.completionAnnotations.get(schemaLocation);
+    if (!ownAnnotations) {
+      ownAnnotations = { annotation: {}, firstAnnotationNode: undefined };
+      for (const node of nodes) {
+        if (addKeywordAnnotation(ownAnnotations.annotation, node, context)) {
+          ownAnnotations.firstAnnotationNode ??= node;
+        }
+      }
+      this.completionAnnotations.set(schemaLocation, ownAnnotations);
+    }
+
+    return ownAnnotations;
   }
 
   // Undefined if the keyword doesn't constrain the value
@@ -616,10 +641,20 @@ function toAnnotations(records: AnnotationRecord[]): Annotation[] {
   return records.map((record) => new Annotation(record));
 }
 
+// A schema's annotations are only used once at a location. If they apply both
+// no matter what the value is and because of what the value is, they're a
+// location annotation.
 function appendAnnotations(target: RecordedAnnotations, source: RecordedAnnotations) {
   for (const pointer in source) {
     target[pointer] ??= [];
-    target[pointer].push(...source[pointer]);
+    for (const recorded of source[pointer]) {
+      const index = target[pointer].findIndex(({ annotation }) => annotation === recorded.annotation);
+      if (index === -1) {
+        target[pointer].push(recorded);
+      } else if (recorded.kind === "location") {
+        target[pointer][index] = recorded;
+      }
+    }
   }
 }
 
