@@ -1253,7 +1253,7 @@ describe("Property completions", () => {
     ]);
   });
 
-  test("completion is documented with only a description", async () => {
+  test("completion is documented in plain text with only a plain description", async () => {
     fixtureSchemaUri = await client.writeDocument("schema.json", `{
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
@@ -1274,7 +1274,7 @@ describe("Property completions", () => {
     });
 
     expect(completions).toMatchObject([
-      { label: "name", documentation: { kind: MarkupKind.Markdown, value: "The name of the thing" } }
+      { label: "name", documentation: { kind: MarkupKind.PlainText, value: "The name of the thing" } }
     ]);
   });
 
@@ -1330,6 +1330,56 @@ describe("Property completions", () => {
 
     expect(completions).toMatchObject([
       { label: "name", documentation: { kind: MarkupKind.Markdown, value: "_Markdown_" } }
+    ]);
+  });
+
+  test("completion documentation escapes a plain title and description", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": { "title": "*.json", "description": "Use <name>\\nor a_b_c" }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      ""
+    }`);
+    const uri = await client.openDocument("instance.json");
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 7 }
+    });
+
+    expect(completions).toMatchObject([
+      { label: "name", documentation: { kind: MarkupKind.Markdown, value: "**\\*\\.json**\n\nUse \\<name\\>\n\nor a\\_b\\_c" } }
+    ]);
+  });
+
+  test("completion documentation doesn't escape a markdownDescription", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": { "title": "Name", "markdownDescription": "_Markdown_" }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      ""
+    }`);
+    const uri = await client.openDocument("instance.json");
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 7 }
+    });
+
+    expect(completions).toMatchObject([
+      { label: "name", documentation: { kind: MarkupKind.Markdown, value: "**Name**\n\n_Markdown_" } }
     ]);
   });
 

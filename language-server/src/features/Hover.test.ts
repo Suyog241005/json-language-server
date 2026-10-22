@@ -63,7 +63,7 @@ describe("Hover", () => {
         kind: "markdown",
         value: `**Full Name**
 
-The full name of the person.
+The full name of the person\\.
 
 ---
 
@@ -105,7 +105,7 @@ _hyperjump-json-language-server_`
     expect(result).toEqual({
       contents: {
         kind: "markdown",
-        value: `Name for kind a.
+        value: `Name for kind a\\.
 
 ---
 
@@ -141,9 +141,9 @@ _hyperjump-json-language-server_`
     expect(result).toEqual({
       contents: {
         kind: "markdown",
-        value: `Referenced description.
+        value: `Referenced description\\.
 
-Sibling description.
+Sibling description\\.
 
 ---
 
@@ -181,9 +181,9 @@ _hyperjump-json-language-server_`
     expect(result).toEqual({
       contents: {
         kind: "markdown",
-        value: `First description.
+        value: `First description\\.
 
-Second description.
+Second description\\.
 
 ---
 
@@ -219,9 +219,9 @@ _hyperjump-json-language-server_`
     expect(result).toEqual({
       contents: {
         kind: "markdown",
-        value: `First description.
+        value: `First description\\.
 
-Second description.
+Second description\\.
 
 ---
 
@@ -482,7 +482,7 @@ _hyperjump-json-language-server_`
         kind: "markdown",
         value: `**New Title**
 
-Age of the user in years.
+Age of the user in years\\.
 
 ---
 

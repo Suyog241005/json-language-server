@@ -1,7 +1,7 @@
 import { MarkupKind } from "vscode-languageserver";
 import { JsonDocuments } from "../services/JsonDocuments.ts";
 import { LspEvaluationPlugin } from "../evaluation/LspEvaluationPlugin.ts";
-import { describeAnnotations } from "../util/utils.ts";
+import { describeAnnotations, joinDocumentation } from "./annotation-documentation.ts";
 
 import type { Server } from "../services/Server.ts";
 import type { ServerCapabilities } from "vscode-languageserver";
@@ -38,19 +38,14 @@ export class Hover {
           ? plugin.getLocationAnnotations(pointer)
           : [...plugin.getLocationAnnotations(pointer), ...plugin.getValueAnnotations(pointer)];
 
-        const lines = describeAnnotations(annotations);
-        if (lines.length === 0) {
+        const documentation = describeAnnotations(annotations);
+        if (documentation.length === 0) {
           return;
         }
 
-        lines.push("---\n\n_hyperjump-json-language-server_");
+        documentation.push({ kind: MarkupKind.Markdown, value: "---\n\n_hyperjump-json-language-server_" });
 
-        return {
-          contents: {
-            kind: MarkupKind.Markdown,
-            value: lines.join("\n\n")
-          }
-        };
+        return { contents: joinDocumentation(documentation)! };
       } catch {
       }
     });
