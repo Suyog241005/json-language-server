@@ -45,6 +45,15 @@ export class PropertyCompletionsProvider implements CompletionsProvider {
           continue;
         }
 
+        const propertyLocation = JsonPointer.append(propertyName, instanceLocation);
+        const annotations = plugin.getLocationAnnotations(propertyLocation);
+        // Annotations from the parent's anyOf/oneOf alternatives are location
+        // annotations here, so one alternative's doNotSuggest hides the
+        // property until a discriminant rules that alternative out
+        if (annotations.some((annotation) => annotation.doNotSuggest())) {
+          continue;
+        }
+
         const completionItem: CompletionItem = {
           label: propertyName,
           kind: CompletionItemKind.Property,
@@ -60,8 +69,7 @@ export class PropertyCompletionsProvider implements CompletionsProvider {
         };
 
         // A property is deprecated only if it's deprecated no matter what its value is
-        const propertyLocation = JsonPointer.append(propertyName, instanceLocation);
-        tagDeprecated(completionItem, plugin.getLocationAnnotations(propertyLocation));
+        tagDeprecated(completionItem, annotations);
 
         completionItems.push(completionItem);
       }
