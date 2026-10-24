@@ -20,18 +20,15 @@ const { ast } = await compile(schema);
 
 // The accessors this mixin extends
 type Extended = BaseAnnotation & {
-  description(): string | undefined;
   deprecated(): boolean;
 };
 
 // Schemas that don't use the vocabulary still produce annotations for its
 // keywords as unknown keywords.
 export const VscodeAnnotation = <T extends Constructor<Extended>>(Base: T) => class extends Base {
-  // Prefers markdownDescription over the standard description keyword
-  override description(): string | undefined {
+  markdownDescription(): string | undefined {
     return (this.keywords["https://microsoft.com/keyword/markdownDescription"]
-      ?? this.unknownKeyword("markdownDescription", `${metaSchemaUri}#/properties/markdownDescription`, ast)
-      ?? super.description()) as string | undefined;
+      ?? this.unknownKeyword("markdownDescription", `${metaSchemaUri}#/properties/markdownDescription`, ast)) as string | undefined;
   }
 
   // A deprecation message deprecates on its own, without the deprecated keyword

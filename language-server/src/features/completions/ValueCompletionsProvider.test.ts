@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { CompletionItem, CompletionItemKind, CompletionItemTag, CompletionRequest, InsertTextFormat } from "vscode-languageserver";
+import { CompletionItem, CompletionItemKind, CompletionItemTag, CompletionRequest, InsertTextFormat, MarkupKind } from "vscode-languageserver";
 import { TestClient } from "../../test/TestClient.ts";
 
 describe("Value Completions", () => {
@@ -4464,6 +4464,189 @@ describe("Value Completions", () => {
     ]);
   });
 
+  test("completion is documented with the title and description of the value", async () => {
+    const fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "value": {
+          "anyOf": [
+            { "const": "red", "title": "Red", "description": "The warm one" },
+            { "const": "blue", "title": "Blue" }
+          ]
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "value":
+    }`);
+    const uri = await client.openDocument("instance.json");
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 14 }
+    });
+
+    expect(completions).toMatchObject([
+      { label: `"red"`, documentation: { kind: MarkupKind.Markdown, value: "**Red**\n\nThe warm one" } },
+      { label: `"blue"`, documentation: { kind: MarkupKind.Markdown, value: "**Blue**" } }
+    ]);
+  });
+
+  test("completion is documented with the annotations of a schema applied twice only once", async () => {
+    const fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "value": {
+          "anyOf": [{ "$ref": "#/$defs/red" }, { "$ref": "#/$defs/red" }]
+        }
+      },
+      "$defs": {
+        "red": { "const": "red", "title": "Red" }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "value":
+    }`);
+    const uri = await client.openDocument("instance.json");
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 14 }
+    });
+
+    expect(completions).toMatchObject([
+      { label: `"red"`, documentation: { kind: MarkupKind.Markdown, value: "**Red**" } }
+    ]);
+  });
+
+  test("completion is not documented with the annotations of its location", async () => {
+    const fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "value": {
+          "title": "Color",
+          "anyOf": [
+            { "const": "red", "title": "Red" },
+            { "const": "blue" }
+          ]
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "value":
+    }`);
+    const uri = await client.openDocument("instance.json");
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 14 }
+    });
+
+    expect(completions).toMatchObject([
+      { label: `"red"`, documentation: { kind: MarkupKind.Markdown, value: "**Red**" } },
+      { label: `"blue"` }
+    ]);
+    expect((completions as CompletionItem[])[1]).not.toHaveProperty("documentation");
+  });
+
+  test("completion is not documented when the value has no title or description", async () => {
+    const fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "value": {
+          "title": "Color",
+          "enum": ["red", "blue"]
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "value":
+    }`);
+    const uri = await client.openDocument("instance.json");
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 14 }
+    });
+
+    expect(completions).toHaveLength(2);
+    for (const completion of completions as CompletionItem[]) {
+      expect(completion).not.toHaveProperty("documentation");
+    }
+  });
+
+  test("completion for a type is documented with the title and description of the type's schema", async () => {
+    const fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "value": {
+          "anyOf": [
+            { "type": "string", "title": "Name", "description": "A name" },
+            { "type": "number", "title": "Id" }
+          ]
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "value":
+    }`);
+    const uri = await client.openDocument("instance.json");
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 14 }
+    });
+
+    expect(completions).toMatchObject([
+      { label: "number", documentation: { kind: MarkupKind.Markdown, value: "**Id**" } },
+      { label: `""`, documentation: { kind: MarkupKind.Markdown, value: "**Name**\n\nA name" } }
+    ]);
+  });
+
+  test("completion documentation prefers markdownDescription over description", async () => {
+    const fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "value": {
+          "anyOf": [
+            { "const": "red", "description": "Plain", "markdownDescription": "_Markdown_" }
+          ]
+        }
+      }
+    }`);
+
+    await client.writeDocument("instance.json", `{
+      "$schema": "${fixtureSchemaUri}",
+      "value":
+    }`);
+    const uri = await client.openDocument("instance.json");
+
+    const completions = await client.sendRequest(CompletionRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 14 }
+    });
+
+    expect(completions).toMatchObject([
+      { label: `"red"`, documentation: { kind: MarkupKind.Markdown, value: "_Markdown_" } }
+    ]);
+  });
+
   test("completion returns no completions when the schema can't be loaded", async () => {
     await client.writeDocument("instance.json", `{
       "$schema": "./missing.json",
@@ -4510,6 +4693,38 @@ describe("Value Completions", () => {
         { label: `"b"` }
       ]);
       expect(completions[1].tags).toBeUndefined();
+    });
+
+    test("documentation leads with the deprecation message followed by the value's title and description", async () => {
+      const fixtureSchemaUri = await client.writeDocument("schema.json", `{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "value": {
+            "title": "Value",
+            "anyOf": [
+              { "const": "a", "title": "A", "description": "The first", "markdownDeprecationMessage": "Use **b**." },
+              { "const": "b", "title": "B" }
+            ]
+          }
+        }
+      }`);
+
+      await client.writeDocument("instance.json", `{
+        "$schema": "${fixtureSchemaUri}",
+        "value":
+      }`);
+      const uri = await client.openDocument("instance.json");
+
+      const completions = await client.sendRequest(CompletionRequest.type, {
+        textDocument: { uri },
+        position: { line: 2, character: 16 }
+      }) as CompletionItem[];
+
+      expect(completions).toMatchObject([
+        { label: `"a"`, tags: [CompletionItemTag.Deprecated], documentation: { kind: "markdown", value: "Use **b**.\n\n**A**\n\nThe first" } },
+        { label: `"b"`, documentation: { kind: "markdown", value: "**B**" } }
+      ]);
     });
 
     test("values of a deprecated location aren't deprecated themselves", async () => {

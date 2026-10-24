@@ -63,7 +63,7 @@ describe("Hover", () => {
         kind: "markdown",
         value: `**Full Name**
 
-The full name of the person.
+The full name of the person\\.
 
 ---
 
@@ -105,7 +105,7 @@ _hyperjump-json-language-server_`
     expect(result).toEqual({
       contents: {
         kind: "markdown",
-        value: `Name for kind a.
+        value: `Name for kind a\\.
 
 ---
 
@@ -141,9 +141,9 @@ _hyperjump-json-language-server_`
     expect(result).toEqual({
       contents: {
         kind: "markdown",
-        value: `Referenced description.
+        value: `Referenced description\\.
 
-Sibling description.
+Sibling description\\.
 
 ---
 
@@ -181,9 +181,9 @@ _hyperjump-json-language-server_`
     expect(result).toEqual({
       contents: {
         kind: "markdown",
-        value: `First description.
+        value: `First description\\.
 
-Second description.
+Second description\\.
 
 ---
 
@@ -219,9 +219,9 @@ _hyperjump-json-language-server_`
     expect(result).toEqual({
       contents: {
         kind: "markdown",
-        value: `First description.
+        value: `First description\\.
 
-Second description.
+Second description\\.
 
 ---
 
@@ -438,6 +438,151 @@ _hyperjump-json-language-server_`
     });
   });
 
+  test("should use the annotations of a schema applied twice only once on hover over a property value", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": { "allOf": [{ "$ref": "#/$defs/name" }, { "$ref": "#/$defs/name" }] }
+      },
+      "$defs": {
+        "name": { "title": "Name", "description": "A name." }
+      }
+    }`);
+
+    const instanceText = `{\n  "$schema": "${fixtureSchemaUri}",\n  "name": "x"\n}`;
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    const result = await client.sendRequest(HoverRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 10 }
+    });
+
+    expect(result).toEqual({
+      contents: {
+        kind: "markdown",
+        value: `**Name**
+
+A name\\.
+
+---
+
+_hyperjump-json-language-server_`
+      }
+    });
+  });
+
+  test("should use the annotations of a schema applied twice only once on hover over an incomplete property", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": { "allOf": [{ "$ref": "#/$defs/name" }, { "$ref": "#/$defs/name" }] }
+      },
+      "$defs": {
+        "name": { "title": "Name", "description": "A name." }
+      }
+    }`);
+
+    const instanceText = `{\n  "$schema": "${fixtureSchemaUri}",\n  "name":\n}`;
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    const result = await client.sendRequest(HoverRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 4 }
+    });
+
+    expect(result).toEqual({
+      contents: {
+        kind: "markdown",
+        value: `**Name**
+
+A name\\.
+
+---
+
+_hyperjump-json-language-server_`
+      }
+    });
+  });
+
+  test("should use the annotations of a schema applied both conditionally and unconditionally only once", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "allOf": [{ "$ref": "#/$defs/name" }],
+          "anyOf": [{ "$ref": "#/$defs/name" }, { "type": "number" }]
+        }
+      },
+      "$defs": {
+        "name": { "title": "Name", "description": "A name." }
+      }
+    }`);
+
+    const instanceText = `{\n  "$schema": "${fixtureSchemaUri}",\n  "name": "x"\n}`;
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    const result = await client.sendRequest(HoverRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 10 }
+    });
+
+    expect(result).toEqual({
+      contents: {
+        kind: "markdown",
+        value: `**Name**
+
+A name\\.
+
+---
+
+_hyperjump-json-language-server_`
+      }
+    });
+  });
+
+  test("should repeat a title that different schemas both have", async () => {
+    fixtureSchemaUri = await client.writeDocument("schema.json", `{
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/$defs/name", "title": "Name" }
+      },
+      "$defs": {
+        "name": { "title": "Name", "description": "A name." }
+      }
+    }`);
+
+    const instanceText = `{\n  "$schema": "${fixtureSchemaUri}",\n  "name": "x"\n}`;
+    await client.writeDocument("instance.json", instanceText);
+    const uri = await client.openDocument("instance.json");
+
+    const result = await client.sendRequest(HoverRequest.type, {
+      textDocument: { uri },
+      position: { line: 2, character: 10 }
+    });
+
+    expect(result).toEqual({
+      contents: {
+        kind: "markdown",
+        value: `**Name**
+
+A name\\.
+
+**Name**
+
+---
+
+_hyperjump-json-language-server_`
+      }
+    });
+  });
+
   test("should not duplicate annotations when the referenced schema is edited while the instance stays open", async () => {
     fixtureSchemaUri = await client.writeDocument("schema.json", `{
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -482,7 +627,7 @@ _hyperjump-json-language-server_`
         kind: "markdown",
         value: `**New Title**
 
-Age of the user in years.
+Age of the user in years\\.
 
 ---
 

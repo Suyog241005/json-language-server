@@ -3,6 +3,7 @@ import * as JsonPointer from "@hyperjump/json-pointer";
 import * as Pact from "@hyperjump/pact";
 import { JsonDocuments } from "../../services/JsonDocuments.ts";
 import { JsonDocument } from "../../models/JsonDocument.ts";
+import { describeAnnotations, joinDocumentation } from "../annotation-documentation.ts";
 
 import type { CompletionItem, MarkupContent, Position, ServerCapabilities, Range } from "vscode-languageserver";
 import type { Node } from "jsonc-parser";
@@ -116,37 +117,37 @@ const getCompletionContext = (jsonDocument: JsonDocument, position: Position): C
   return { node, instanceLocation, range, position };
 };
 
-// Marks a completion as deprecated if any of the annotations deprecate it,
-// with their messages as its documentation
-export const tagDeprecated = (completionItem: CompletionItem, annotations: Annotation[]) => {
+// Describes a completion with its annotations. It's marked as deprecated if any
+// of them deprecate it, and its documentation leads with their deprecation
+// messages followed by the titles and descriptions.
+export const describeCompletion = (completionItem: CompletionItem, annotations: Annotation[]) => {
   const deprecated = annotations.filter((annotation) => annotation.deprecated());
   if (deprecated.length > 0) {
     completionItem.tags = [CompletionItemTag.Deprecated];
-    completionItem.documentation = deprecationDocumentation(deprecated);
+  }
+
+  const documentation = joinDocumentation([...deprecationMessages(deprecated), ...describeAnnotations(annotations)]);
+  if (documentation) {
+    completionItem.documentation = documentation;
   }
 };
 
 // The deprecation messages of every annotation that deprecates a completion.
-// Markdown if any of them is markdown, otherwise plain text. Plain text
-// messages are escaped when they're combined with markdown ones.
-const deprecationDocumentation = (deprecated: Annotation[]): MarkupContent | undefined => {
-  const isMarkdown = deprecated.some((annotation) => annotation.markdownDeprecationMessage() !== undefined);
-  const messages = Pact.pipe(
-    deprecated,
-    Pact.map((annotation) => {
-      const plainMessage = annotation.deprecationMessage();
-      return annotation.markdownDeprecationMessage() ?? (isMarkdown && plainMessage ? escapeMarkdown(plainMessage) : plainMessage);
-    }),
-    Pact.filter((message) => message !== undefined),
-    Pact.collectArray
-  );
+// Prefers markdownDeprecationMessage over deprecationMessage.
+const deprecationMessages = (deprecated: Annotation[]) => {
+  const messages: MarkupContent[] = [];
+  for (const annotation of deprecated) {
+    const markdownMessage = annotation.markdownDeprecationMessage();
+    if (markdownMessage) {
+      messages.push({ kind: MarkupKind.Markdown, value: markdownMessage });
+      continue;
+    }
 
-  if (messages.length === 0) {
-    return;
+    const message = annotation.deprecationMessage();
+    if (message) {
+      messages.push({ kind: MarkupKind.PlainText, value: message });
+    }
   }
 
-  return { kind: isMarkdown ? MarkupKind.Markdown : MarkupKind.PlainText, value: messages.join("\n\n") };
+  return messages;
 };
-
-// Any ASCII punctuation can be escaped, so escaping all of it is always safe
-const escapeMarkdown = (text: string) => text.replace(/[!-/:-@[-`{-~]/g, "\\$&");
